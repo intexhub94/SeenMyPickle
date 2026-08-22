@@ -147,6 +147,7 @@ Key highlights include:
     - **Validation**: "START MATCH" MUST only enable if at least one valid email is provided (either typed or in chips).
     - **Smart Combination**: The system MUST combine added chips and the currently typed email into a single recipient list (max 5) when starting a match.
     - **Input Handoff**: The email text field MUST automatically clear after an email is added as a chip.
+    - **Visual Discovery**: The email input field MUST include a trailing **"+" icon** when a valid email is present and space is available in the recipient list. This provides a clear visual cue for adding multiple players.
 - **Auto-Preview Handoff**: Upon acknowledging the post-match "Recording Notification" (Waiver), the app MUST automatically trigger the 5-minute Idle Preview to prepare the monitor for the next players.
 - **Z-Index Strategy**: UI must follow a strict layering model:
     1. **LAYER 0 (Floor)**: Background MP4 Player.
