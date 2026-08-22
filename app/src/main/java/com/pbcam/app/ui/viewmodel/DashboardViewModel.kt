@@ -70,7 +70,6 @@ data class DashboardUiState(
     val adminSessionSecondsLeft: Int = 0,
     val themeMode: AppTheme = AppTheme.DARK,
     val isPreviewMuted: Boolean = false,
-    val uploadStatusMessage: String = "",
     val isConfigReady: Boolean = false,
     val isLicensed: Boolean = false,
     val deviceId: String = "",
@@ -554,11 +553,11 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                     } else {
                         active.progress.getString("progress_msg") ?: "Processing..."
                     }
-                    _uiState.update { it.copy(uploadProgress = progress, uploadStatusMessage = msg) }
+                    _uiState.update { it.copy(uploadProgress = progress, uploadMessage = msg) }
                 } else {
                     val completed = infos.filter { it.state == WorkInfo.State.SUCCEEDED }
                     if (completed.isNotEmpty() && _uiState.value.uploadProgress != null) {
-                        _uiState.update { it.copy(uploadProgress = 1f, uploadMessage = "Complete") }
+                        _uiState.update { it.copy(uploadProgress = 1f, uploadMessage = "COMPLETE") }
                         
                         autoDismissJob?.cancel()
                         autoDismissJob = viewModelScope.launch {

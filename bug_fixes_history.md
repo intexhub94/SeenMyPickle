@@ -58,6 +58,16 @@ Strictly follows the rules in `ai_workflow_rules.md`.
 
 ---
 
+## 2026-08-23: Header Progress Message Restoration
+- **User Observation**: Progress bar information (status text) was missing in the dashboard header.
+- **Technical Resolution**: 
+    1. **Field Consolidation**: Unified the background worker's status updates into a single `uploadMessage` field. Removed the redundant and disconnected `uploadStatusMessage` field which was causing the UI to display blank strings during active processing.
+    2. **UI Synchronization**: Verified `DashboardScreen.kt` is correctly wired to `uploadMessage` and applies the mandatory brand-aligned high-contrast styling (PickleGreen with drop shadows).
+- **Impact on Golden Build**: Restores extreme observability for court owners, providing real-time feedback on "Step 2/3: Watermarking..." and "UPLOADING" stages.
+- **Context Sufficiency**: Yes.
+
+---
+
 ## 2026-08-23: Multi-Email Expansion & Logic Fix (5 Players)
 - **User Observation**: Request to expand multi-email support and ensure previous emails are correctly removed/cleared.
 - **Technical Resolution**: 
