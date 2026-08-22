@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "116330730695",
+    "project_id": "pbcamtvplayer",
+    "storage_bucket": "pbcamtvplayer.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:116330730695:android:bd0559a4e26a52a4355ae2",
+        "android_client_info": {
+          "package_name": "com.pbcam.tv"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAivTHLtV2WPcGO-R5uZTzxb4WoUx6eZhk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

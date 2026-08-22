@@ -1,0 +1,17 @@
+🚀 SEENMYPICKLE: ANTI-GRAVITY WEBSITE GENERATION QUERY
+
+---
+
+"Create a professional, high-contrast SaaS landing page for SeenMyPickle, an enterprise-grade Pickleball Court Monitoring and Automated Background Recording platform.
+
+The site must feature:
+- A hero section with a pulsing red 'LIVE' recording indicator.
+- Integration with RTSP and internal cameras.
+- Hardware-locked security highlight.
+- Automated Google Drive and Gmail delivery workflow.
+
+Primary Color: #99FF00 (Neon Pickle Green)
+Background: #000000 (Midnight Black)
+Accent: Burnt Orange
+
+Include a section for 'SeenMyPickle Admin' and 'Fleet Management'."

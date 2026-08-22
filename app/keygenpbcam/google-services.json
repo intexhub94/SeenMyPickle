@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "940501213286",
+    "project_id": "seemypickle",
+    "storage_bucket": "seemypickle.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:940501213286:android:afeffb9d8f5594b06dcda7",
+        "android_client_info": {
+          "package_name": "com.pbcam.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAB04H6J36m_EJMlS0jsXKv0aCWDfCd4JQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:940501213286:android:07baa6af50f3e4896dcda7",
+        "android_client_info": {
+          "package_name": "com.pbcam.keygenpbcam"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAB04H6J36m_EJMlS0jsXKv0aCWDfCd4JQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
