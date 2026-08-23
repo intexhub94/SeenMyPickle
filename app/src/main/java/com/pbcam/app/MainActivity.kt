@@ -1,7 +1,6 @@
 package com.pbcam.app
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
@@ -10,22 +9,23 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.annotation.OptIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import com.pbcam.app.auth.GoogleAuthManager
-import com.pbcam.app.data.CameraSource
-import com.pbcam.app.data.RecordingState
 import com.pbcam.app.data.SecurityUtils
 import com.pbcam.app.service.RecordingService
 import com.pbcam.app.ui.DashboardScreen
 import com.pbcam.app.ui.SetupWizardScreen
 import com.pbcam.app.ui.theme.PBCamTheme
 import com.pbcam.app.ui.viewmodel.DashboardViewModel
+import androidx.media3.common.util.UnstableApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -53,6 +53,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @OptIn(UnstableApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -72,10 +73,10 @@ class MainActivity : ComponentActivity() {
 
                 // DYNAMIC ORIENTATION: Code Bible Rule 3.4 Adjustment
                 LaunchedEffect(uiState.isSetupComplete) {
-                    if (uiState.isSetupComplete || isTablet) {
-                        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    requestedOrientation = if (uiState.isSetupComplete || isTablet) {
+                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                     } else {
-                        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                     }
                 }
 
@@ -120,9 +121,7 @@ class MainActivity : ComponentActivity() {
                                 onStopRecording = {
                                     RecordingService.stop(this)
                                 },
-                                onExportHistory = { fileName ->
-                                    exportLauncher.launch(fileName)
-                                }
+                                onExportHistory = exportLauncher::launch
                             )
                         }
                     }
@@ -161,7 +160,7 @@ class MainActivity : ComponentActivity() {
     private fun requestCorePermissions() {
         val permissions = mutableListOf(
             android.Manifest.permission.CAMERA,
-            android.Manifest.permission.RECORD_AUDIO
+            android.Manifest.permission.RECORD_AUDIO,
         )
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             permissions.add(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -174,7 +173,7 @@ class MainActivity : ComponentActivity() {
             val powerManager = getSystemService(POWER_SERVICE) as PowerManager
             if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
                 val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                    data = Uri.parse("package:$packageName")
+                    data = "package:$packageName".toUri()
                 }
                 startActivity(intent)
             }
