@@ -1,7 +1,10 @@
 package com.pbcam.app
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -55,6 +58,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         
         try {
+            // --- BATTERY OPTIMIZATION REQUEST ---
+            requestIgnoreBatteryOptimizations()
+
             // 1. Pre-flight permission check
             requestCorePermissions()
             
@@ -161,6 +167,20 @@ class MainActivity : ComponentActivity() {
             permissions.add(android.Manifest.permission.POST_NOTIFICATIONS)
         }
         permissionLauncher.launch(permissions.toTypedArray())
+    }
+
+    private fun requestIgnoreBatteryOptimizations() {
+        try {
+            val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                startActivity(intent)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("PBCamBattery", "Failed to request battery optimization bypass: ${e.message}")
+        }
     }
 
     private fun logAppSignature() {

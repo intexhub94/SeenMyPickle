@@ -100,9 +100,10 @@ Key highlights include:
         - The Dashboard MUST force **Landscape** (`SCREEN_ORIENTATION_SENSOR_LANDSCAPE`) on all devices to maintain professional court monitoring standards.
         - The app MUST automatically rotate and lock to Landscape the moment the Setup Wizard is completed.
         - Tablets (`smallestScreenWidthDp >= 600`) MUST remain in Landscape throughout the entire application lifecycle.
-- **Sleep Prevention (Screen-On)**:
+- **Sleep Prevention & Power Management**:
     - **Global Enforcement**: The app MUST use `FLAG_KEEP_SCREEN_ON` globally as long as the application is in the foreground. This ensures the dashboard remains visible for court monitoring without the device locking.
-    - **Implementation**: Managed at the `MainActivity` level using a `SideEffect` to ensure the window flag is always active.
+    - **Battery Optimization Bypass (Main App)**: The main app MUST request the `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` permission and prompt the user to disable system battery throttling. This is mandatory to ensure `RecordingService` and background processing remain uninterrupted.
+    - **Implementation**: Managed at the `MainActivity` level for the Tablet module.
 - **Dynamic Input Ergonomics**:
     - **Keyboard Awareness**: Dashboard MUST use `WindowInsets.ime` to track software keyboard state.
     - **Active Centering**: The Recording Control Card MUST transition its alignment from `BottomEnd` to `Center` whenever the keyboard is visible to prevent occlusion and optimize visibility.

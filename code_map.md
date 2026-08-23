@@ -22,7 +22,7 @@ This document serves as the master logical map for the SeenMyPickle Android proj
 - **`MainActivity.kt`**: 
     - Entry point. 
     - Logic: Permission gating, Dynamic Orientation (Portrait for Setup on mobile, Landscape for Dashboard), Edge-to-edge implementation.
-    - **Hardening**: Dynamically enforces `FLAG_KEEP_SCREEN_ON` during active matches to prevent device sleep.
+    - **Hardening**: Dynamically enforces `FLAG_KEEP_SCREEN_ON` and `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` to ensure hardware/service continuity.
 - **`DashboardViewModel.kt`**:
     - **The "Brain"**: Centralized state (`DashboardUiState`).
     - Logic: Real-time licensing (Firebase), dual-stream state management, descriptive status engine, and admin authorization.
