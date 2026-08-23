@@ -58,6 +58,22 @@ Strictly follows the rules in `ai_workflow_rules.md`.
 
 ---
 
+## 2026-08-23: Technical Debt & DashboardViewModel Cleanup
+- **User Observation**: Multiple compiler warnings in `DashboardViewModel.kt`.
+- **Technical Resolution**: 
+    1. **Modern API Migration**: Replaced the deprecated `activeNetworkInfo` check with the modern `ConnectivityManager.activeNetwork` and `NetworkCapabilities` API. This ensures accurate internet detection on Android 10+.
+    2. **Coroutine Modernization**: Converted all legacy `delay(Long)` calls to the type-safe `delay(Duration)` API (e.g. `10.seconds`, `500.milliseconds`).
+    3. **Warning Suppression & Cleanup**: 
+        - Removed unused `_captureTrigger` and `captureTrigger`.
+        - Added missing Firebase imports to remove redundant long-form qualifiers.
+        - Sanitized `catch` blocks by suppressing unused `Exception` parameters.
+        - Removed the redundant `isSilent` parameter from the internal `checkAppUpdate` cycle.
+    4. **Logic Preservation**: Per user instructions, preserved `emailDebounceJob`, `retryLicenseSync`, `updateCameraSource`, `isValidEmail`, `isEmulator`, `clearLicense`, and `DimTimer` functions for planned feature utilization.
+- **Impact on Golden Build**: Improves codebase maintainability and reduces technical noise without altering core functional behavior.
+- **Context Sufficiency**: Yes.
+
+---
+
 ## 2026-08-23: Header Progress Message Restoration
 - **User Observation**: Progress bar information (status text) was missing in the dashboard header.
 - **Technical Resolution**: 

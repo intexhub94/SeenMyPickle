@@ -27,6 +27,7 @@ Status: 🔴 Open | 🟡 In-Progress | ✅ Resolved
 
 ## ✅ Recently Resolved (To be moved to `bug_fixes_history.md`)
 
+- [x] **Dashboard Cleanup**: Resolved compiler warnings and modernized ViewModel APIs.
 - [x] **Video Jittering**: Restored capture buffers and implemented `fps=30` smoothing filter.
 - [x] **FFmpeg Command Fix**: Replaced 'stimeout' with 'timeout' to fix initialization crash.
 - [x] **RTSP Data Failure**: Simplified capture command and implemented Fatal Error Guard.

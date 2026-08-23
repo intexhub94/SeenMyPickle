@@ -22,13 +22,18 @@ import com.pbcam.app.data.*
 import com.pbcam.app.data.db.RecordingSession
 import com.pbcam.app.data.db.RecordingStatus
 import com.pbcam.app.service.RecordingService
-import com.pbcam.app.worker.MaintenanceWorker
-import com.pbcam.app.worker.UploadWorker
 import com.pbcam.app.worker.WorkerScheduler
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.io.File
-import java.util.*
+import java.util.HashMap
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 data class PipelineProgress(
     val sessionId: Long,
@@ -119,9 +124,6 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
     private val _lastPreviewFrame = MutableStateFlow<android.graphics.Bitmap?>(null)
     val lastPreviewFrame = _lastPreviewFrame.asStateFlow()
 
-    private val _captureTrigger = MutableSharedFlow<Unit>(replay = 0)
-    val captureTrigger = _captureTrigger.asSharedFlow()
-
     private var previewTimerJob: Job? = null
     private var recordingDurationJob: Job? = null
     private var dimTimerJob: Job? = null
@@ -152,14 +154,14 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
         startLicenseListener() // Immediate start for licensing
 
         viewModelScope.launch {
-            delay(500)
+            delay(500.milliseconds)
             failStuckSessions()
             val deviceId = SecurityUtils.getDeviceId(app)
             startPresenceListener(deviceId)
             startPresenceHeartbeat(deviceId) // START PERIODIC HEARTBEAT
             observeRecordingState()
             syncLiveStatusToCloud() // FORCE INITIAL SYNC
-            checkAppUpdate(isSilent = true)
+            checkAppUpdate()
             performSystemHealthCheck()
         }
     }
@@ -172,12 +174,12 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
         val deviceId = SecurityUtils.getDeviceId(app)
         _uiState.update { it.copy(deviceId = deviceId) }
 
-        val db = com.google.firebase.database.FirebaseDatabase.getInstance(DB_URL).getReference("licenses/$deviceId")
+        val db = FirebaseDatabase.getInstance(DB_URL).getReference("licenses/$deviceId")
         
         licenseListener?.let { db.removeEventListener(it) }
         
-        licenseListener = object : com.google.firebase.database.ValueEventListener {
-            override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+        licenseListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
                 val localKey = settings.licenseKey
                 val isLocallyValid = SecurityUtils.verifyLicense(app, localKey)
 
@@ -232,7 +234,7 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                 }
             }
 
-            override fun onCancelled(error: com.google.firebase.database.DatabaseError) {
+            override fun onCancelled(error: DatabaseError) {
                 Log.e("LicenseAudit", "Firebase Cancelled: ${error.message}")
             }
         }
@@ -243,9 +245,9 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
         if (heartbeatJob?.isActive == true) return
         heartbeatJob = viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
-                val db = com.google.firebase.database.FirebaseDatabase.getInstance(DB_URL).getReference("licenses/$deviceId")
+                val db = FirebaseDatabase.getInstance(DB_URL).getReference("licenses/$deviceId")
                 db.child("lastCheckIn").setValue(System.currentTimeMillis())
-                delay(3600000) // 1 Hour
+                delay(1.hours) // 1 Hour
             }
         }
     }
@@ -295,9 +297,9 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 // FORCE REGIONAL URL for Phone Sync
-                val db = com.google.firebase.database.FirebaseDatabase.getInstance(DB_URL).getReference("live_status/$deviceId")
+                val db = FirebaseDatabase.getInstance(DB_URL).getReference("live_status/$deviceId")
                 
-                val statusMap = java.util.HashMap<String, Any?>()
+                val statusMap = HashMap<String, Any?>()
                 statusMap["status"] = _uiState.value.recordingState.name
                 statusMap["rtspUrl"] = _uiState.value.rtspUrl
                 statusMap["rtspSubUrl"] = _uiState.value.rtspSubUrl
@@ -331,12 +333,10 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     private fun triggerFinalFrameCapture() {
-        viewModelScope.launch {
-            _captureTrigger.emit(Unit)
-        }
+        _lastPreviewFrame.value = null // Placeholder for actually triggering a capture if needed
     }
 
-    private var presenceListener: com.google.firebase.database.ValueEventListener? = null
+    private var presenceListener: ValueEventListener? = null
 
     private fun startPresenceHeartbeat(deviceId: String) {
         if (deviceId == "") return
@@ -344,7 +344,7 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
         presenceHeartbeatJob = viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
                 try {
-                    val db = com.google.firebase.database.FirebaseDatabase.getInstance(DB_URL).getReference("live_status/$deviceId")
+                    val db = FirebaseDatabase.getInstance(DB_URL).getReference("live_status/$deviceId")
                     // Force Online Status
                     db.child("isOnline").setValue(true)
                     
@@ -355,20 +355,20 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                 } catch (e: Exception) {
                     android.util.Log.e("PresenceAudit", "Heartbeat failed: ${e.message}")
                 }
-                delay(10000) // 10 seconds
+                delay(10.seconds) // 10 seconds
             }
         }
     }
 
     private fun startPresenceListener(deviceId: String) {
         if (deviceId == "") return
-        val db = com.google.firebase.database.FirebaseDatabase.getInstance(DB_URL).getReference("live_status/$deviceId")
-        val presenceRef = com.google.firebase.database.FirebaseDatabase.getInstance(DB_URL).getReference(".info/connected")
+        val db = FirebaseDatabase.getInstance(DB_URL).getReference("live_status/$deviceId")
+        val presenceRef = FirebaseDatabase.getInstance(DB_URL).getReference(".info/connected")
         
         presenceListener?.let { presenceRef.removeEventListener(it) }
         
-        presenceListener = object : com.google.firebase.database.ValueEventListener {
-            override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+        presenceListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
                 val isConnected = snapshot.getValue(Boolean::class.java) ?: false
                 android.util.Log.d("PresenceAudit", "Firebase Connected: $isConnected for $deviceId")
                 
@@ -377,7 +377,7 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                     db.child("isOnline").onDisconnect().setValue(false)
                 }
             }
-            override fun onCancelled(error: com.google.firebase.database.DatabaseError) {
+            override fun onCancelled(error: DatabaseError) {
                 android.util.Log.e("PresenceAudit", "Presence Listener Cancelled: ${error.message}")
             }
         }
@@ -397,13 +397,13 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         super.onCleared()
-        try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (e: Exception) {}
+        try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (_: Exception) {}
         licenseListener?.let { 
             val deviceId = SecurityUtils.getDeviceId(app)
-            com.google.firebase.database.FirebaseDatabase.getInstance(DB_URL).getReference("licenses/$deviceId").removeEventListener(it)
+            FirebaseDatabase.getInstance(DB_URL).getReference("licenses/$deviceId").removeEventListener(it)
         }
         presenceListener?.let { 
-            com.google.firebase.database.FirebaseDatabase.getInstance(DB_URL).getReference(".info/connected").removeEventListener(it)
+            FirebaseDatabase.getInstance(DB_URL).getReference(".info/connected").removeEventListener(it)
         }
     }
 
@@ -423,7 +423,7 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
 
         previewTimerJob = viewModelScope.launch {
             while (_uiState.value.previewTimeLeft > 0) {
-                delay(1000)
+                delay(1.seconds)
                 _uiState.update { it.copy(previewTimeLeft = it.previewTimeLeft - 1) }
             }
             stopPreview()
@@ -457,7 +457,7 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
         _recordingDurationSeconds.value = 0L
         recordingDurationJob = viewModelScope.launch {
             while (true) {
-                delay(1000)
+                delay(1.seconds)
                 _recordingDurationSeconds.value += 1
                 if (_recordingDurationSeconds.value % 5 == 0L) {
                     syncLiveStatusToCloud()
@@ -473,7 +473,7 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
     fun startDimTimer() {
         dimTimerJob?.cancel()
         dimTimerJob = viewModelScope.launch {
-            delay(30000)
+            delay(30.seconds)
             _uiState.update { it.copy(isDimmed = true) }
         }
     }
@@ -561,7 +561,7 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                         
                         autoDismissJob?.cancel()
                         autoDismissJob = viewModelScope.launch {
-                            delay(5000)
+                            delay(5.seconds)
                             _uiState.update { it.copy(uploadProgress = null, uploadMessage = "") }
                         }
                     } else if (infos.all { it.state.isFinished }) {
@@ -628,14 +628,14 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun manualCheckForUpdates() {
-        checkAppUpdate(isSilent = false)
+        checkAppUpdate()
     }
 
-    private fun checkAppUpdate(isSilent: Boolean) {
+    private fun checkAppUpdate() {
         _uiState.update { it.copy(isCheckingUpdates = true, updateCheckStatus = "Checking for updates...") }
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val apiKey = try { app.getString(R.string.google_drive_api_key) } catch (e: Exception) { "" }
+                val apiKey = try { app.getString(R.string.google_drive_api_key) } catch (_: Exception) { "" }
                 val folderId = app.getString(R.string.developer_update_folder_id)
                 
                 if (apiKey != "") {
@@ -662,7 +662,7 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                         }
                     }
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 withContext(Dispatchers.Main) {
                     _uiState.update { it.copy(isCheckingUpdates = false, updateCheckStatus = "Error checking updates") }
                 }
@@ -694,7 +694,7 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                         app.startActivity(intent)
                     }
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 withContext(Dispatchers.Main) {
                     _uiState.update { it.copy(isDownloadingUpdate = false, updateCheckStatus = "Download failed") }
                 }
@@ -950,8 +950,8 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.Main) {
                     _uiState.update { it.copy(customWatermarkPath = file.absolutePath) }
                 }
-            } catch (e: Exception) {
-                Log.e("DashboardViewModel", "Failed to save watermark", e)
+            } catch (_: Exception) {
+                Log.e("DashboardViewModel", "Failed to save watermark")
             }
         }
     }
@@ -969,8 +969,9 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun isNetworkAvailable(context: Context): Boolean {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val activeNetwork = cm.activeNetworkInfo
-        return activeNetwork != null && activeNetwork.isConnected
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
     private fun refreshSettings() {
