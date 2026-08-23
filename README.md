@@ -1,4 +1,4 @@
-# SeenMyPickle (PBCam): 2026 Golden Build 🎾
+# SeenMyPickle (PBCam): 🎾
 
 ![SeenMyPickle Logo](app/src/main/res/raw/app_logo_email.png)
 
