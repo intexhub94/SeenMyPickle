@@ -27,6 +27,8 @@ import com.pbcam.app.ui.theme.PBCamTheme
 import com.pbcam.app.ui.viewmodel.DashboardViewModel
 import androidx.media3.common.util.UnstableApi
 import kotlinx.coroutines.Dispatchers
+import android.widget.Toast
+import com.google.android.gms.common.api.ApiException
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -35,8 +37,14 @@ class MainActivity : ComponentActivity() {
 
     private val signInLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
-            authManager.handleSignInResult(result.data)
-            viewModel.refresh()
+            val authResult = authManager.handleSignInResult(result.data)
+            authResult.onSuccess {
+                viewModel.refresh()
+            }.onFailure { e ->
+                val code = if (e is ApiException) e.statusCode else -1
+                Toast.makeText(this, "Google Sign-in Failed. Code: $code", Toast.LENGTH_LONG).show()
+                viewModel.refresh()
+            }
         }
     }
 

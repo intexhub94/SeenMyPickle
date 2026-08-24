@@ -279,7 +279,7 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                 } else if (state == RecordingState.IDLE) {
                     stopRecordingTimer()
                     clearEmails()
-                    _lastPreviewFrame.value = null // Force fresh background on next snapshot
+                    // Continuity: Keep the last preview frame as background even in IDLE
                 }
 
                 // Sync status to cloud for TV app
@@ -333,7 +333,9 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     private fun triggerFinalFrameCapture() {
-        _lastPreviewFrame.value = null // Placeholder for actually triggering a capture if needed
+        // This is a signal for the UI to perform one last snapshot if the feed is still active.
+        // The actual bitmap update happens via updateLastFrame(bitmap) from the Composable.
+        android.util.Log.d("DashboardViewModel", "Final frame signal sent.")
     }
 
     private var presenceListener: ValueEventListener? = null

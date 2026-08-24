@@ -59,15 +59,24 @@ class GoogleAuthManager(private val context: Context) {
         }
     }
 
-    fun handleSignInResult(data: Intent?): GoogleSignInAccount? {
+    fun handleSignInResult(data: Intent?): Result<GoogleSignInAccount> {
         val task = GoogleSignIn.getSignedInAccountFromIntent(data)
         return try {
             val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
             Log.d("GoogleAuthManager", "Sign in successful: ${SecurityUtils.maskEmail(account.email)}")
-            account
+            Result.success(account)
         } catch (e: com.google.android.gms.common.api.ApiException) {
-            Log.e("GoogleAuthManager", "Sign in failed: $e")
-            null
+            val statusCode = e.statusCode
+            val errorMsg = when (statusCode) {
+                10 -> "DEVELOPER_ERROR (Check SHA-1 and Client ID in Firebase)"
+                7 -> "NETWORK_ERROR (Check Wi-Fi/Internet)"
+                12500 -> "SIGN_IN_FAILED"
+                12501 -> "SIGN_IN_CANCELLED"
+                12502 -> "SIGN_IN_IN_PROGRESS"
+                else -> "Error Code: $statusCode"
+            }
+            Log.e("GoogleAuthManager", "Sign in failed: $errorMsg ($statusCode)")
+            Result.failure(e)
         }
     }
 

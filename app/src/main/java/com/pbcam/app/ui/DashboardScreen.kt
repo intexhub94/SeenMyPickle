@@ -145,8 +145,11 @@ fun DashboardScreen(
     val isPaused = uiState.recordingState == RecordingState.PAUSED
     val isConfigReady = uiState.isConfigReady
     
-    val showFeed = isPreviewActive || (isRecording && isPaused)
-    val showRetainedFrame = !showFeed
+    // FEED logic: Only show the live camera layer during explicit preview.
+    // On pause or recording, we hide the feed to allow the Frozen Frame (Layer 1.5) 
+    // to take over and show the last valid court state.
+    val showFeed = isPreviewActive
+    val showRetainedFrame = !showFeed && lastPreviewFrame != null
 
     val isKeyboardVisible = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
 

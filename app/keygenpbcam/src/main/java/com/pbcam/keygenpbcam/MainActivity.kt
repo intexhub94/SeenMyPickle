@@ -34,6 +34,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
@@ -62,6 +63,14 @@ class MainActivity : FragmentActivity() {
     private var isAuthorized by mutableStateOf(false)
     private var hardwareError by mutableStateOf<String?>(null)
     private val authViewModel: AdminAuthViewModel by viewModels()
+
+    private val cameraPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+        if (isGranted) {
+            // Permission granted, handled via the trigger in UI
+        } else {
+            Toast.makeText(this, "Camera permission is required for QR scanning", Toast.LENGTH_LONG).show()
+        }
+    }
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -113,7 +122,16 @@ class MainActivity : FragmentActivity() {
                         } else if (!isFirebaseAuthed) {
                             FirebaseLoginScreen(onAuthSuccess = { authViewModel.updateAuthState() })
                         } else {
-                            AdminDashboard(rawCloudData = rawCloudData)
+                            AdminDashboard(
+                                rawCloudData = rawCloudData,
+                                onRequestCameraPermission = { onGranted ->
+                                    if (ContextCompat.checkSelfPermission(this@MainActivity, android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                        onGranted()
+                                    } else {
+                                        cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                                    }
+                                }
+                            )
                         }
                     }
                 }
@@ -225,7 +243,7 @@ class MainActivity : FragmentActivity() {
     }
 
     @Composable
-    fun AdminDashboard(rawCloudData: String) {
+    fun AdminDashboard(rawCloudData: String, onRequestCameraPermission: (() -> Unit) -> Unit) {
         var deviceId by remember { mutableStateOf("") }
         var generatedKey by remember { mutableStateOf("") }
         var clientEmail by remember { mutableStateOf("") }
@@ -259,7 +277,8 @@ class MainActivity : FragmentActivity() {
                     onManualDaysChange = { manualDays = it },
                     onGenerate = { showNameDialog = true }, 
                     onShare = { k, d -> shareKey(k, d) }, 
-                    clipboardManager = clipboardManager
+                    clipboardManager = clipboardManager,
+                    onRequestCameraPermission = onRequestCameraPermission
                 )
                 1 -> LicenseList(licenses)
                 2 -> CloudTerminalTab(rawCloudData)
@@ -333,7 +352,8 @@ fun GeneratorTab(
     onManualDaysChange: (String) -> Unit,
     onGenerate: () -> Unit, 
     onShare: (String, String) -> Unit, 
-    clipboardManager: androidx.compose.ui.platform.ClipboardManager
+    clipboardManager: androidx.compose.ui.platform.ClipboardManager,
+    onRequestCameraPermission: (() -> Unit) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     var showScanner by remember { mutableStateOf(false) }
@@ -347,7 +367,11 @@ fun GeneratorTab(
             label = { Text("Device ID") }, 
             modifier = Modifier.fillMaxWidth(),
             trailingIcon = {
-                IconButton(onClick = { showScanner = true }) {
+                IconButton(onClick = { 
+                    onRequestCameraPermission {
+                        showScanner = true
+                    }
+                }) {
                     Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan Device QR")
                 }
             }

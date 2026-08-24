@@ -490,15 +490,21 @@ class RecordingService : LifecycleService() {
     private fun pauseRecording() {
         android.util.Log.d("RecordingService", "Pausing recording")
         val source = (application as PBCamApplication).settingsStore.cameraSource
-        if (source != CameraSource.RTSP) {
-            activeRecording?.pause()
-            scope.launch(Dispatchers.Main) {
-                cameraProvider?.unbindAll()
+        
+        scope.launch {
+            // Rule 3.4: Enforce 100ms delay to allow the UI to capture the final frame
+            delay(100)
+            
+            if (source != CameraSource.RTSP) {
+                activeRecording?.pause()
+                withContext(Dispatchers.Main) {
+                    cameraProvider?.unbindAll()
+                }
+            } else {
+                rtspSession?.cancel()
             }
-        } else {
-            rtspSession?.cancel()
+            RecordingStateManager.updateState(RecordingState.PAUSED)
         }
-        RecordingStateManager.updateState(RecordingState.PAUSED)
     }
 
     private fun resumeRecording() {
