@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -629,41 +630,110 @@ fun PasscodeEntryDialog(lockoutTime: Long?, onVerify: (String) -> Boolean, onSuc
             .fillMaxWidth(if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600) 0.5f else 0.9f)
             .windowInsetsPadding(WindowInsets.ime)
             .padding(16.dp),
-        title = { Text("Admin Authorization") },
+        title = { 
+            Text(
+                "Admin Authorization", 
+                style = MaterialTheme.typography.headlineSmall, 
+                fontWeight = FontWeight.Black,
+                color = Color.White
+            ) 
+        },
         text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally, 
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+                modifier = Modifier.padding(vertical = 8.dp)
+            ) {
                 if (isLocked) {
                     val remaining = ((lockoutTime!! - now) / 1000).toInt()
-                    Text("Too many failed attempts.", color = MaterialTheme.colorScheme.error)
-                    Text("Try again in $remaining seconds", fontWeight = FontWeight.Bold)
+                    Icon(Icons.Default.LockClock, null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.error)
+                    Text("Too many failed attempts.", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                    Text("Try again in $remaining seconds", style = MaterialTheme.typography.titleMedium)
                 } else {
-                    Text("Enter the 4-digit administrator passcode to access settings.")
-                    OutlinedTextField(
-                        value = passcode,
-                        onValueChange = { input -> 
-                            if (input.length <= 4 && input.all { it.isDigit() }) {
-                                passcode = input
-                                error = false
-                                if (input.length == 4) {
-                                    if (onVerify(input)) onSuccess() else { error = true; passcode = "" }
+                    Text(
+                        "Enter the 4-digit administrator passcode to access settings.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.7f),
+                        textAlign = TextAlign.Center
+                    )
+
+                    // PROFESSIONAL 4-BOX PIN INPUT
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
+                        // Hidden TextField to manage state and keyboard
+                        BasicTextField(
+                            value = passcode,
+                            onValueChange = { input ->
+                                if (input.length <= 4 && input.all { it.isDigit() }) {
+                                    passcode = input
+                                    error = false
+                                    if (input.length == 4) {
+                                        if (onVerify(input)) {
+                                            onSuccess()
+                                        } else {
+                                            error = true
+                                            passcode = ""
+                                        }
+                                    }
+                                }
+                            },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
+                            modifier = Modifier
+                                .focusRequester(focusRequester)
+                                .alpha(0.01f) // Hidden but functional
+                        )
+
+                        // Visual Representation (4 Boxes)
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            repeat(4) { index ->
+                                val char = passcode.getOrNull(index)
+                                val isFocused = passcode.length == index
+                                
+                                Surface(
+                                    modifier = Modifier
+                                        .size(width = 56.dp, height = 64.dp)
+                                        .border(
+                                            width = if (isFocused) 2.dp else 1.dp,
+                                            color = if (error) Color.Red 
+                                                   else if (isFocused) Color(0xFF99FF00) // PickleGreen
+                                                   else Color.White.copy(alpha = 0.2f),
+                                            shape = RoundedCornerShape(12.dp)
+                                        ),
+                                    color = Color.Black.copy(alpha = 0.3f),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        if (char != null) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(12.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color.White)
+                                            )
+                                        } else if (isFocused) {
+                                            // Optional: cursor blinker logic could go here
+                                        }
+                                    }
                                 }
                             }
-                        },
-                        label = { Text("4-digit PIN") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { }),
-                        modifier = Modifier.focusRequester(focusRequester),
-                        isError = error,
-                        singleLine = true
-                    )
-                    if (error) Text("Incorrect passcode", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+
+                    if (error) {
+                        Text(
+                            "Incorrect passcode", 
+                            color = MaterialTheme.colorScheme.error, 
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         },
         confirmButton = { },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("CANCEL") }
+            TextButton(onClick = onDismiss) { 
+                Text("CANCEL", fontWeight = FontWeight.Bold) 
+            }
         }
     )
 }
