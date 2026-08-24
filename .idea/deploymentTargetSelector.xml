@@ -4,10 +4,10 @@
     <selectionStates>
       <SelectionState runConfigName="app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-08-23T18:18:11.280171399Z">
+        <DropdownSelection timestamp="2026-08-24T20:47:28.107228001Z">
           <Target type="DEFAULT_BOOT">
             <handle>
-              <DeviceId pluginId="LocalEmulator" identifier="path=/home/intexhub/.android/avd/Pixel_9_Pro.avd" />
+              <DeviceId pluginId="LocalEmulator" identifier="path=/home/intexhub/.android/avd/Small_Phone.avd" />
             </handle>
           </Target>
         </DropdownSelection>
@@ -57,10 +57,10 @@
       </SelectionState>
       <SelectionState runConfigName="tv">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-08-22T15:36:17.486764200Z">
+        <DropdownSelection timestamp="2026-08-24T23:22:08.759832992Z">
           <Target type="DEFAULT_BOOT">
             <handle>
-              <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\iamre\.android\avd\Pixel_10_Pro_XL.avd" />
+              <DeviceId pluginId="LocalEmulator" identifier="path=/home/intexhub/.android/avd/Medium_Tablet.avd" />
             </handle>
           </Target>
         </DropdownSelection>
