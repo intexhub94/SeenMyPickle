@@ -85,7 +85,9 @@ Key highlights include:
     - **Raw Hashing**: All platforms (Main App, KeyGen, Web) MUST perform cryptographic hashing on the raw device ID.
     - **Verification Gate**: The app MUST use full cryptographic verification (`SecurityUtils.verifyLicense`) rather than simple string prefix checks for activation.
 - **Admin Security**:
-    - **Passcode Force**: Authorization MUST use a strict **4-digit numeric** requirement. Non-digit inputs MUST be blocked, and the "Authorize" button MUST only enable upon the 4th digit.
+    - **Passcode Force**: Authorization MUST use a strict **4-digit numeric** requirement. Non-digit inputs MUST be blocked.
+    - **Custom Keypad**: The Admin Authorization dialog MUST utilize a custom on-screen numeric keypad instead of the Android system keyboard. This ensures UI stability in Landscape mode and prevents layout "cramping" or occlusion.
+    - **Landscape Optimization**: In Landscape mode, the authorization dialog MUST use a **Side-by-Side** layout: instructions/PIN boxes on the left, numeric keypad on the right.
     - **Recovery Access**: A master hardcoded passcode (**2026**) is maintained for emergency administrative recovery.
     - **Persistent Lockout**: Three failed PIN attempts trigger a mandatory **60-second lockout**. This state MUST be stored in the obfuscated `SettingsStore` to ensure it survives app restarts.
     - **Session Expiry**: Admin sessions must be terminated immediately upon closing the Admin Panel.
@@ -138,7 +140,7 @@ Key highlights include:
     - **Privacy Wipe**: All player emails and temporary alert settings MUST be explicitly nullified (`alertEmail = ""`) and cleared from both the ViewModel state and persistent `SettingsStore` the moment a match is stopped or the dashboard returns to idle.
     - **Control Card Streamlining**: The recording control card MUST NOT display a "Match Recording" title. The interface MUST focus exclusively on player email entry and action buttons to ensure a clean, purpose-driven user experience.
     - **Battery Optimization (Pause)**: When a match is paused, the app MUST finalize the current recording segment and release the camera hardware (unbind for Internal, cancel for RTSP) to save power. 
-    - **Capture Buffer**: A minimum **100ms capture delay** MUST be enforced between the "Pause" trigger and the "Hardware Release" to ensure the UI successfully captures the final valid court frame.
+    - **Capture Buffer**: A minimum **100ms capture delay** MUST be enforced between the "Pause" trigger and the "Hardware Release" to ensure the UI successfully captures the final valid court frame for background continuity.
     - **Resume Logic**: Upon Resume, a new segment MUST be initiated and automatically combined with previous parts during match finalization.
     - **Memory Safety**: Retained frames MUST be cleared when switching camera sources or closing the app to prevent memory leaks and visual artifacts.
 - **Player Email Auto-Reset**: The "Player Email" field and chip list MUST be automatically cleared as soon as a recording is stopped.
@@ -238,6 +240,10 @@ Key highlights include:
     - **Retention Notice**: Every email MUST include the disclaimer: *"⚠️ Footage is stored for 5 days from the recording date and will be permanently deleted thereafter."*
 
 ### 3.6 Cloud & Network
+- **Google Auth Synchronization**: To prevent "Code 10" developer errors, the project MUST maintain absolute alignment between:
+    - The **Web Client ID** in `strings.xml`.
+    - The `oauth_client` array in `google-services.json`.
+    - The **SHA-1 Fingerprint** registered in the Firebase Console (Environment-specific: Debug for development, Release for distribution).
 - **Google Drive Resilience**: Use **60-second network timeouts** to accommodate fluctuating court WiFi.
 - **ONVIF Discovery**: Use a "Total Shouting" strategy probing Multicast, Broadcast, and Subnets simultaneously.
 - **Centralized Update Pipeline**:

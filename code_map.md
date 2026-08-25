@@ -39,6 +39,7 @@ This document serves as the master logical map for the SeenMyPickle Android proj
     - **The "Face"**: Implements the multi-layer Z-Index strategy.
     - Features: 
         - **Dynamic Orientation**: Portrait for Setup on mobile, Landscape for Dashboard on all devices.
+        - **Admin Authorization**: Implements `PasscodeEntryDialog` with a custom **`AdminNumericKeypad`** and side-by-side landscape layout to eliminate system keyboard conflicts.
         - **Perfectly Centered Branding**: App icon and splash logo centered using gravity-locked layer-lists to prevent hardware-specific scaling artifacts.
         - **High-Contrast Header**: Branding area and progress information wrapped in a harmonized pill surface (`0.4f` black, `8.dp` shadow, `16.dp` corners).
         - **Pairing ID Visibility**: Displays the **TV PAIRING ID** in the top-left pill for frictionless court-side setup.
@@ -85,6 +86,7 @@ This document serves as the master logical map for the SeenMyPickle Android proj
     - **Logic**: 
         - **Internal**: CameraX with 6Mbps target bitrate and hardware synchronization.
         - **RTSP**: Hardened FFmpeg capture with **High-Speed Stream Copying** (`-c copy`), Jitter-Proof Wireless Protocol (50MB buffer), and monotonic clock synchronization.
+        - **Handoff (Rule 3.4)**: Implements a **100ms capture delay** on pause to ensure visual continuity.
         - **Log Integrity**: Implements `lastExecutedSession` persistence to capture real FFmpeg exit codes and logs even during loop failures.
     - **Initialization Fix**: Utilizes universal `-timeout` flag (normalized from legacy `stimeout`) for wide camera compatibility.
     - **Fatal Error Guard**: Implements 2-second failure detection. Automatically stops matches on instant connection failure to prevent empty segment loops.
