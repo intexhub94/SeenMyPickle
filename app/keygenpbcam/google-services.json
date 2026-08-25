@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "940501213286",
+    "firebase_url": "https://seemypickle-default-rtdb.asia-southeast1.firebasedatabase.app",
     "project_id": "seemypickle",
     "storage_bucket": "seemypickle.firebasestorage.app"
   },
@@ -12,7 +13,20 @@
           "package_name": "com.pbcam.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "940501213286-38qsivpjeoev9m7578p31s63re1h9j3g.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.pbcam.app",
+            "certificate_hash": "8442276830346720910a855242d000e800a79b08"
+          }
+        },
+        {
+          "client_id": "940501213286-ncc1oksblh7lt1ohu2hn7hct5prtsptd.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAB04H6J36m_EJMlS0jsXKv0aCWDfCd4JQ"
@@ -29,6 +43,25 @@
         "mobilesdk_app_id": "1:940501213286:android:07baa6af50f3e4896dcda7",
         "android_client_info": {
           "package_name": "com.pbcam.keygenpbcam"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAB04H6J36m_EJMlS0jsXKv0aCWDfCd4JQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:940501213286:android:a83bc8deee946ef36dcda7",
+        "android_client_info": {
+          "package_name": "com.pbcam.tv"
         }
       },
       "oauth_client": [],
