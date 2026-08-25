@@ -2,7 +2,6 @@ package com.pbcam.app.ui
 
 import android.graphics.Bitmap
 import android.view.OrientationEventListener
-import android.view.ViewGroup
 import android.view.TextureView
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
@@ -14,27 +13,23 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.automirrored.filled.Backspace
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.geometry.Offset
@@ -42,11 +37,10 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -61,25 +55,18 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.rtsp.RtspMediaSource.Factory
 import com.pbcam.app.data.CameraSource
-import com.pbcam.app.data.CameraStateManager
 import com.pbcam.app.data.PreviewState
 import com.pbcam.app.data.RecordingState
-import com.pbcam.app.data.SecurityUtils
 import com.pbcam.app.ui.components.AdminPanel
-import com.pbcam.app.ui.viewmodel.DashboardViewModel
 import com.pbcam.app.ui.viewmodel.DashboardUiState
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.draw.alpha
-import androidx.lifecycle.viewModelScope
-import androidx.media3.ui.PlayerView
-import kotlinx.coroutines.launch
+import com.pbcam.app.ui.viewmodel.DashboardViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.*
-import java.io.File
+import java.util.Locale
+import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalMaterial3Api::class)
-@androidx.media3.common.util.UnstableApi
+@UnstableApi
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel,
@@ -87,7 +74,7 @@ fun DashboardScreen(
     onSignOut: () -> Unit,
     onStartRecording: () -> Unit,
     onStopRecording: () -> Unit,
-    onExportHistory: (String) -> Unit = {}
+    onExportHistory: (String) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val recordingDurationSeconds: Long by viewModel.recordingDurationSeconds.collectAsStateWithLifecycle()
@@ -151,9 +138,9 @@ fun DashboardScreen(
     // On pause or recording, we hide the feed to allow the Frozen Frame (Layer 1.5) 
     // to take over and show the last valid court state.
     val showFeed = isPreviewActive
-    val showRetainedFrame = !showFeed && lastPreviewFrame != null
+    val showRetainedFrame = (!showFeed) && (lastPreviewFrame != null)
 
-    val isKeyboardVisible = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+    val isKeyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
 
     Box(modifier = Modifier
         .fillMaxSize()
@@ -180,19 +167,13 @@ fun DashboardScreen(
                     val previewUrl = if (uiState.rtspSubUrl.length > 7) uiState.rtspSubUrl else uiState.rtspUrl
                     RtspPreview(
                         url = previewUrl,
-                        isLicensed = uiState.isLicensed,
-                        isPaused = !isPreviewActive && !isRecording,
+                        isPaused = false,
                         isKeyboardVisible = isKeyboardVisible,
-                        viewModel = viewModel,
                         onFrameCaptured = { frame -> frame?.let { viewModel.updateLastFrame(it) } }
                     )
                 } else {
                     InternalCameraPreview(
-                        isLicensed = uiState.isLicensed, 
-                        isRecording = isRecording,
                         isKeyboardVisible = isKeyboardVisible,
-                        rotation = currentRotation,
-                        viewModel = viewModel,
                         onFrameCaptured = { frame -> frame?.let { viewModel.updateLastFrame(it) } }
                     )
                 }
@@ -347,7 +328,7 @@ fun DashboardScreen(
                     onClick = { showPasscodeDialog = true }
                 )
                 DashboardIconButton(
-                    icon = if (uiState.isPreviewMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                    icon = if (uiState.isPreviewMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
                     size = controlSize,
                     iconSize = iconSize,
                     onClick = { viewModel.toggleMute() }
@@ -374,7 +355,6 @@ fun DashboardScreen(
             ) {
                 RecordingControlCard(
                     uiState = uiState,
-                    recordingDurationSeconds = recordingDurationSeconds,
                     viewModel = viewModel,
                     isTablet = isTablet,
                     onStart = onStartRecording,
@@ -387,7 +367,7 @@ fun DashboardScreen(
                 val hrs = seconds / 3600
                 val mins = (seconds % 3600) / 60
                 val secs = seconds % 60
-                val timeStr = if (hrs > 0) String.format("%02d:%02d:%02d", hrs, mins, secs) else String.format("%02d:%02d", mins, secs)
+                val timeStr = if (hrs > 0) String.format(Locale.US, "%02d:%02d:%02d", hrs, mins, secs) else String.format(Locale.US, "%02d:%02d", mins, secs)
 
                 Box(
                     modifier = Modifier
@@ -440,7 +420,7 @@ fun DashboardScreen(
                 val hrs = seconds / 3600
                 val mins = (seconds % 3600) / 60
                 val secs = seconds % 60
-                val timeStr = if (hrs > 0) String.format("%02d:%02d:%02d", hrs, mins, secs) else String.format("%02d:%02d", mins, secs)
+                val timeStr = if (hrs > 0) String.format(Locale.US, "%02d:%02d:%02d", hrs, mins, secs) else String.format(Locale.US, "%02d:%02d", mins, secs)
 
                 Box(
                     modifier = Modifier.fillMaxSize().zIndex(1.7f),
@@ -620,7 +600,7 @@ fun PasscodeEntryDialog(lockoutTime: Long?, onVerify: (String) -> Boolean, onSuc
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
         modifier = Modifier
-            .fillMaxWidth(if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600) 0.6f else 0.95f)
+            .fillMaxWidth(if (LocalConfiguration.current.screenWidthDp >= 600) 0.6f else 0.95f)
             .padding(8.dp),
         title = { 
             Text(
@@ -643,7 +623,7 @@ fun PasscodeEntryDialog(lockoutTime: Long?, onVerify: (String) -> Boolean, onSuc
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     if (isLocked) {
-                        val remaining = ((lockoutTime!! - now) / 1000).toInt()
+                        val remaining = ((lockoutTime - now) / 1000).toInt()
                         Icon(Icons.Default.LockClock, null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.error)
                         Text("Too many failed attempts.", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
                         Text("Try again in $remaining seconds", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
@@ -748,7 +728,7 @@ fun AdminNumericKeypad(onNumberClick: (String) -> Unit, onDeleteClick: () -> Uni
             listOf("1", "2", "3"),
             listOf("4", "5", "6"),
             listOf("7", "8", "9"),
-            listOf("", "0", "DEL")
+            listOf("", "0", "DEL"),
         )
 
         rows.forEach { row ->
@@ -841,15 +821,15 @@ fun StatusPill(isConfigReady: Boolean, shadow: Shadow) {
 }
 
 @Composable
-fun InternalCameraPreview(isLicensed: Boolean, isRecording: Boolean, isKeyboardVisible: Boolean, rotation: Int, viewModel: DashboardViewModel, onFrameCaptured: (Bitmap?) -> Unit) {
+fun InternalCameraPreview(isKeyboardVisible: Boolean, onFrameCaptured: (Bitmap?) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val previewView = remember { PreviewView(context) }
     
     // Periodically capture frame
-    LaunchedEffect(isLicensed, isKeyboardVisible) {
+    LaunchedEffect(isKeyboardVisible) {
         while (true) {
-            delay(1000)
+            delay(1.seconds)
             if (!isKeyboardVisible) {
                 onFrameCaptured(previewView.bitmap)
             }
@@ -864,7 +844,7 @@ fun InternalCameraPreview(isLicensed: Boolean, isRecording: Boolean, isKeyboardV
             cameraProviderFuture.addListener({
                 val cameraProvider = cameraProviderFuture.get()
                 val preview = Preview.Builder().build().apply {
-                    setSurfaceProvider(view.surfaceProvider)
+                    surfaceProvider = view.surfaceProvider
                 }
                 val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
                 try {
@@ -880,7 +860,7 @@ fun InternalCameraPreview(isLicensed: Boolean, isRecording: Boolean, isKeyboardV
 
 @UnstableApi
 @Composable
-fun RtspPreview(url: String, isLicensed: Boolean, isPaused: Boolean, isKeyboardVisible: Boolean, viewModel: DashboardViewModel, onFrameCaptured: (Bitmap?) -> Unit) {
+fun RtspPreview(url: String, isPaused: Boolean, isKeyboardVisible: Boolean, onFrameCaptured: (Bitmap?) -> Unit) {
     val context = LocalContext.current
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
@@ -954,7 +934,7 @@ fun RtspPreview(url: String, isLicensed: Boolean, isPaused: Boolean, isKeyboardV
         LaunchedEffect(url, isPaused, textureViewRef, isKeyboardVisible) {
             if (!isPaused && url.isNotBlank()) {
                 while (true) {
-                    delay(2000)
+                    delay(2.seconds)
                     if (!isKeyboardVisible) {
                         textureViewRef?.let { tv ->
                             if (tv.isAvailable) {
@@ -990,7 +970,7 @@ fun RtspPreview(url: String, isLicensed: Boolean, isPaused: Boolean, isKeyboardV
 }
 
 @Composable
-fun RecordingControlCard(uiState: DashboardUiState, recordingDurationSeconds: Long, viewModel: DashboardViewModel, isTablet: Boolean, onStart: () -> Unit, onStop: () -> Unit) {
+fun RecordingControlCard(uiState: DashboardUiState, viewModel: DashboardViewModel, isTablet: Boolean, onStart: () -> Unit, onStop: () -> Unit) {
     val isRecording = uiState.recordingState != RecordingState.IDLE
     val isPaused = uiState.recordingState == RecordingState.PAUSED
     val isConfigReady = uiState.isConfigReady
@@ -1039,7 +1019,7 @@ fun RecordingControlCard(uiState: DashboardUiState, recordingDurationSeconds: Lo
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { viewModel.addEmail(uiState.alertEmail) }),
                         trailingIcon = {
-                            if (uiState.isEmailValid && uiState.selectedEmails.size < 5) {
+                            if ((uiState.isEmailValid) && (uiState.selectedEmails.size < 5)) {
                                 IconButton(onClick = { viewModel.addEmail(uiState.alertEmail) }) {
                                     Icon(
                                         imageVector = Icons.Default.Add,
