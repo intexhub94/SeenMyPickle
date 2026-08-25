@@ -267,21 +267,34 @@ fun DashboardScreen(
                                     animationSpec = infiniteRepeatable(animation = tween(800), repeatMode = RepeatMode.Reverse),
                                     label = "alpha"
                                 )
+
+                                val isFailed = uiState.uploadMessage == "FAILED"
+                                
                                 Box(
                                     modifier = Modifier
                                         .size(10.dp)
                                         .border(1.dp, Color.Black.copy(alpha = 0.5f), CircleShape)
                                         .padding(1.dp)
                                         .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = alpha))
+                                        .background(if (isFailed) Color.Red else MaterialTheme.colorScheme.primary.copy(alpha = alpha))
                                 )
                                 
                                 Text(
                                     text = (uiState.uploadMessage).uppercase(),
                                     style = MaterialTheme.typography.labelSmall.copy(shadow = headerShadow),
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = if (isFailed) Color.Red else MaterialTheme.colorScheme.primary
                                 )
+
+                                if (isFailed && uiState.failedPipelineSessionId != null) {
+                                    Spacer(Modifier.width(8.dp))
+                                    IconButton(
+                                        onClick = { viewModel.retryUpload(uiState.failedPipelineSessionId!!) },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(Icons.Default.Refresh, "Retry", tint = Color.Red, modifier = Modifier.size(18.dp))
+                                    }
+                                }
                             }
                             Spacer(Modifier.height(4.dp))
                             Box(modifier = Modifier.fillMaxWidth().height(6.dp)) {
@@ -295,7 +308,7 @@ fun DashboardScreen(
                                 LinearProgressIndicator(
                                     progress = { progress },
                                     modifier = Modifier.fillMaxSize().clip(CircleShape),
-                                    color = MaterialTheme.colorScheme.primary,
+                                    color = if (uiState.uploadMessage == "FAILED") Color.Red else MaterialTheme.colorScheme.primary,
                                     trackColor = Color.White.copy(alpha = 0.2f)
                                 )
                             }
@@ -311,37 +324,6 @@ fun DashboardScreen(
                         )
                     }
                 }
-            }
-
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .navigationBarsPadding()
-                    .displayCutoutPadding()
-                    .padding(sidePadding),
-                horizontalArrangement = Arrangement.spacedBy(if (isTablet) 24.dp else 16.dp)
-            ) {
-                DashboardIconButton(
-                    icon = Icons.Default.Settings, 
-                    size = controlSize,
-                    iconSize = iconSize,
-                    onClick = { showPasscodeDialog = true }
-                )
-                DashboardIconButton(
-                    icon = if (uiState.isPreviewMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
-                    size = controlSize,
-                    iconSize = iconSize,
-                    onClick = { viewModel.toggleMute() }
-                )
-                DashboardIconButton(
-                    icon = if (isPreviewActive) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    size = controlSize,
-                    iconSize = iconSize,
-                    onClick = { 
-                        if (isPreviewActive) viewModel.stopPreview()
-                        else viewModel.startPreview()
-                    }
-                )
             }
 
             Box(
@@ -360,6 +342,46 @@ fun DashboardScreen(
                     onStart = onStartRecording,
                     onStop = onStopRecording
                 )
+            }
+
+            // --- NAVIGATION & UTILITY CONTROLS (Bottom Start) ---
+            // Moved here to ensure it's layered ON TOP of the recording card box
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .navigationBarsPadding()
+                    .displayCutoutPadding()
+                    .padding(sidePadding),
+                color = Color.Black.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(32.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(if (isTablet) 16.dp else 8.dp)
+                ) {
+                    DashboardIconButton(
+                        icon = Icons.Default.Settings, 
+                        size = controlSize,
+                        iconSize = iconSize,
+                        onClick = { showPasscodeDialog = true }
+                    )
+                    DashboardIconButton(
+                        icon = if (uiState.isPreviewMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                        size = controlSize,
+                        iconSize = iconSize,
+                        onClick = { viewModel.toggleMute() }
+                    )
+                    DashboardIconButton(
+                        icon = if (isPreviewActive) Icons.Default.Stop else Icons.Default.PlayArrow,
+                        size = controlSize,
+                        iconSize = iconSize,
+                        onClick = { 
+                            if (isPreviewActive) viewModel.stopPreview()
+                            else viewModel.startPreview()
+                        }
+                    )
+                }
             }
 
             if (isRecording && uiState.cameraSource != CameraSource.RTSP) {

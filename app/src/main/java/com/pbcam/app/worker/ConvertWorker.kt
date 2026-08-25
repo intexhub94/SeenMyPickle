@@ -275,7 +275,7 @@ class ConvertWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         } catch (e: Exception) {
             android.util.Log.e("ConvertWorker", "Fatal worker error", e)
             repository.markFailed(sessionId, e.message ?: "Internal processing error")
-            return Result.failure()
+            return Result.failure(workDataOf(KEY_SESSION_ID to sessionId))
         } finally {
             processingSource.delete(); watermarkedRecording.delete(); watermarkFile.delete(); scaledLogo.delete(); concatList.delete()
         }

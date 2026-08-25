@@ -7,7 +7,7 @@ import java.security.MessageDigest
 
 object AdminSecurityUtils {
     private const val MASK_KEY = "pbcam_security_key_2026"
-    private val AUTHORIZED_ADMIN_IDS = listOf("PB-4B13-127A", "PB-9A1F-34F3") // Primary and Honor 90
+    private val AUTHORIZED_ADMIN_IDS = listOf("PB-4B13-127A", "PB-9A1F-34F3", "PB-0E67-A8EC") // Authorized Admins (Incl. Honor 90)
     
     // CORRECT XOR values for "pbcam_premium_2026_secret" vs "pbcam_security_key_2026"
     // This MUST match SecurityUtils.kt in the main app exactly.

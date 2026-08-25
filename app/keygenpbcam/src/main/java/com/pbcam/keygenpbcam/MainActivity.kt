@@ -518,22 +518,53 @@ fun LicenseList(licenses: List<LicenseRecord>) {
     } else {
         LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(licenses) { record ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(record.name.ifEmpty { "No Email Assigned" }, fontWeight = FontWeight.Bold)
-                            Text("ID: ${record.deviceId}", style = MaterialTheme.typography.labelSmall)
+                val lastSeen = formatLastSeen(record.lastCheckIn)
+                val diff = if (record.lastCheckIn != null) System.currentTimeMillis() - record.lastCheckIn else Long.MAX_VALUE
+                
+                val activityColor = when {
+                    diff < 24 * 60 * 60 * 1000L -> com.pbcam.keygenpbcam.ui.theme.PickleGreen
+                    diff < 48 * 60 * 60 * 1000L -> com.pbcam.keygenpbcam.ui.theme.BlazeOrange
+                    else -> Color.Gray
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .clip(androidx.compose.foundation.shape.CircleShape)
+                                        .background(activityColor)
+                                )
+                                Text(record.name.ifEmpty { "No Email Assigned" }, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                            }
                             
-                            val lastSeen = formatLastSeen(record.lastCheckIn)
-                            val isRecent = lastSeen == "Just now"
+                            Text("ID: ${record.deviceId}", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                            Text("Created: ${formatDate(record.dateCreated)}", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                            
+                            Spacer(Modifier.height(4.dp))
+                            
                             Text(
-                                text = "Last Seen: $lastSeen", 
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (isRecent) Color(0xFF2E7D32) else Color.Gray
+                                text = "LAST SEEN: ${lastSeen.uppercase()}", 
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Black,
+                                color = activityColor
                             )
 
                             @Suppress("DEPRECATION")
-                            Text("Status: ${record.status.uppercase()}", color = if (record.status == "revoked") Color.Red else Color(0xFF2E7D32))
+                            val statusColor = if (record.status == "revoked") Color.Red else com.pbcam.keygenpbcam.ui.theme.PickleGreen
+                            Text(
+                                "STATUS: ${record.status.uppercase()}", 
+                                color = statusColor,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                         
                         Row {
@@ -571,6 +602,12 @@ fun LicenseList(licenses: List<LicenseRecord>) {
             }
         )
     }
+}
+
+private fun formatDate(timestamp: Long): String {
+    if (timestamp == 0L) return "N/A"
+    val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.US)
+    return sdf.format(Date(timestamp))
 }
 
 private fun formatLastSeen(lastCheckIn: Long?): String {

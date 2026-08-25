@@ -22,6 +22,8 @@ import com.pbcam.app.data.*
 import com.pbcam.app.data.db.RecordingSession
 import com.pbcam.app.data.db.RecordingStatus
 import com.pbcam.app.service.RecordingService
+import com.pbcam.app.worker.ConvertWorker
+import com.pbcam.app.worker.UploadWorker
 import com.pbcam.app.worker.WorkerScheduler
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -103,7 +105,8 @@ data class DashboardUiState(
     val selectedEmails: List<String> = emptyList(),
     val cloudSyncStatus: String = "IDLE",
     val cloudSyncError: String = "",
-    val lastReplaySessionId: Long = -1
+    val lastReplaySessionId: Long = -1,
+    val failedPipelineSessionId: Long? = null
 )
 
 class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
@@ -549,26 +552,40 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
             }.collect { infos ->
                 val active = infos.find { !it.state.isFinished }
                 if (active != null) {
+                    val sessionId = active.progress.getLong(ConvertWorker.KEY_SESSION_ID, -1L)
+                        .let { if (it == -1L) active.progress.getLong(UploadWorker.KEY_SESSION_ID, -1L) else it }
+                    
                     val progress = active.progress.getFloat("progress_val", 0f)
                     val msg = if (active.state == WorkInfo.State.ENQUEUED) {
                         "Waiting to retry..."
                     } else {
                         active.progress.getString("progress_msg") ?: "Processing..."
                     }
-                    _uiState.update { it.copy(uploadProgress = progress, uploadMessage = msg) }
+                    _uiState.update { it.copy(uploadProgress = progress, uploadMessage = msg, failedPipelineSessionId = null) }
                 } else {
-                    val completed = infos.filter { it.state == WorkInfo.State.SUCCEEDED }
-                    if (completed.isNotEmpty() && _uiState.value.uploadProgress != null) {
-                        _uiState.update { it.copy(uploadProgress = 1f, uploadMessage = "COMPLETE") }
+                    val failed = infos.find { it.state == WorkInfo.State.FAILED }
+                    if (failed != null) {
+                        val sessionId = failed.outputData.getLong("session_id", -1L)
                         
-                        autoDismissJob?.cancel()
-                        autoDismissJob = viewModelScope.launch {
-                            delay(5.seconds)
-                            _uiState.update { it.copy(uploadProgress = null, uploadMessage = "") }
-                        }
-                    } else if (infos.all { it.state.isFinished }) {
-                        if (_uiState.value.uploadProgress != null && (autoDismissJob?.isActive != true)) {
-                            _uiState.update { it.copy(uploadProgress = null, uploadMessage = "") }
+                        _uiState.update { it.copy(
+                            uploadProgress = 0f, 
+                            uploadMessage = "FAILED", 
+                            failedPipelineSessionId = if (sessionId != -1L) sessionId else null
+                        ) }
+                    } else {
+                        val completed = infos.filter { it.state == WorkInfo.State.SUCCEEDED }
+                        if (completed.isNotEmpty() && _uiState.value.uploadProgress != null) {
+                            _uiState.update { it.copy(uploadProgress = 1f, uploadMessage = "COMPLETE", failedPipelineSessionId = null) }
+                            
+                            autoDismissJob?.cancel()
+                            autoDismissJob = viewModelScope.launch {
+                                delay(5.seconds)
+                                _uiState.update { it.copy(uploadProgress = null, uploadMessage = "", failedPipelineSessionId = null) }
+                            }
+                        } else if (infos.all { it.state.isFinished }) {
+                            if (_uiState.value.uploadProgress != null && (autoDismissJob?.isActive != true)) {
+                                _uiState.update { it.copy(uploadProgress = null, uploadMessage = "", failedPipelineSessionId = null) }
+                            }
                         }
                     }
                 }
@@ -898,7 +915,20 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun retryUpload(sessionId: Long) {
-        WorkerScheduler.enqueueUpload(app, sessionId)
+        viewModelScope.launch(Dispatchers.IO) {
+            val session = repository.getSession(sessionId)
+            if (session != null) {
+                // If it's already converted (status is PENDING_UPLOAD or UPLOADING), 
+                // just retry the upload part.
+                if (session.status == RecordingStatus.PENDING_UPLOAD || 
+                    session.status == RecordingStatus.UPLOADING ||
+                    session.status == RecordingStatus.SENDING_EMAIL) {
+                    WorkerScheduler.enqueueOnlyUpload(app, sessionId)
+                } else {
+                    WorkerScheduler.enqueueUpload(app, sessionId)
+                }
+            }
+        }
     }
 
     fun exportHistoryToUri(uri: Uri) {

@@ -15,7 +15,7 @@
       },
       "oauth_client": [
         {
-          "client_id": "940501213286-38qsivpjeoev9m7578p31s63re1h9j3g.apps.googleusercontent.com",
+          "client_id": "940501213286-38qsbemsv1utkkscvtfqooiqltmp7bj6.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.pbcam.app",
@@ -34,7 +34,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "940501213286-ncc1oksblh7lt1ohu2hn7hct5prtsptd.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     },
@@ -45,7 +50,20 @@
           "package_name": "com.pbcam.keygenpbcam"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "940501213286-8a61vdoca9dtmle3kbh2vqlpgse4meru.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.pbcam.keygenpbcam",
+            "certificate_hash": "8442276830346720910a855242d000e800a79b08"
+          }
+        },
+        {
+          "client_id": "940501213286-ncc1oksblh7lt1ohu2hn7hct5prtsptd.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAB04H6J36m_EJMlS0jsXKv0aCWDfCd4JQ"
@@ -53,7 +71,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "940501213286-ncc1oksblh7lt1ohu2hn7hct5prtsptd.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     },
@@ -64,7 +87,12 @@
           "package_name": "com.pbcam.tv"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "940501213286-ncc1oksblh7lt1ohu2hn7hct5prtsptd.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAB04H6J36m_EJMlS0jsXKv0aCWDfCd4JQ"
@@ -72,7 +100,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "940501213286-ncc1oksblh7lt1ohu2hn7hct5prtsptd.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

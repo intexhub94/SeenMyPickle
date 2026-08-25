@@ -60,8 +60,10 @@ class UploadWorker(
         }
 
         val accessToken = authManager.getAccessToken() ?: run {
-            android.util.Log.w("UploadWorker", "No access token available")
-            return Result.retry()
+            android.util.Log.w("UploadWorker", "No access token available for session $sessionId")
+            val msg = "Login required for upload"
+            repository.updateProgress(sessionId, 0f, msg)
+            return Result.failure(workDataOf(KEY_SESSION_ID to sessionId))
         }
 
         val sessionTag = session.courtTag ?: settings.courtTag
@@ -91,8 +93,8 @@ class UploadWorker(
         } ?: run {
             val errorMsg = "Drive upload failed for session $sessionId"
             android.util.Log.e("UploadWorker", errorMsg)
-            // DO NOT mark as failed if we are retrying - keeps the UI progress active
-            return Result.retry()
+            repository.updateProgress(sessionId, 0f, "Upload Failed (Retry)")
+            return Result.failure(workDataOf(KEY_SESSION_ID to sessionId))
         }
 
         val emailMsg = "Sending final email..."

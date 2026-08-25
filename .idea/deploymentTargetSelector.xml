@@ -33,10 +33,10 @@
       </SelectionState>
       <SelectionState runConfigName="app.keygenpbcam">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-08-17T09:51:35.712199400Z">
+        <DropdownSelection timestamp="2026-08-25T18:44:12.555856295Z">
           <Target type="DEFAULT_BOOT">
             <handle>
-              <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\iamre\.android\avd\Medium_Tablet.avd" />
+              <DeviceId pluginId="Wireless" identifier="serviceName=adb-AF2SVB3703002560-L7ynsI" />
             </handle>
           </Target>
         </DropdownSelection>
