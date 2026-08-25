@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -614,60 +615,104 @@ fun PasscodeEntryDialog(lockoutTime: Long?, onVerify: (String) -> Boolean, onSuc
     var error by remember { mutableStateOf(false) }
     val now = System.currentTimeMillis()
     val isLocked = lockoutTime != null && now < lockoutTime
-    val focusRequester = remember { FocusRequester() }
-
-    LaunchedEffect(Unit) {
-        if (!isLocked) {
-            delay(300)
-            focusRequester.requestFocus()
-        }
-    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
         modifier = Modifier
-            .fillMaxWidth(if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600) 0.5f else 0.9f)
-            .windowInsetsPadding(WindowInsets.ime)
-            .padding(16.dp),
+            .fillMaxWidth(if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600) 0.6f else 0.95f)
+            .padding(8.dp),
         title = { 
             Text(
                 "Admin Authorization", 
-                style = MaterialTheme.typography.headlineSmall, 
+                style = MaterialTheme.typography.titleLarge, 
                 fontWeight = FontWeight.Black,
                 color = Color.White
             ) 
         },
         text = {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally, 
-                verticalArrangement = Arrangement.spacedBy(24.dp),
-                modifier = Modifier.padding(vertical = 8.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                if (isLocked) {
-                    val remaining = ((lockoutTime!! - now) / 1000).toInt()
-                    Icon(Icons.Default.LockClock, null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.error)
-                    Text("Too many failed attempts.", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                    Text("Try again in $remaining seconds", style = MaterialTheme.typography.titleMedium)
-                } else {
-                    Text(
-                        "Enter the 4-digit administrator passcode to access settings.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.7f),
-                        textAlign = TextAlign.Center
-                    )
+                // LEFT SIDE: Status & PIN Boxes
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    if (isLocked) {
+                        val remaining = ((lockoutTime!! - now) / 1000).toInt()
+                        Icon(Icons.Default.LockClock, null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.error)
+                        Text("Too many failed attempts.", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                        Text("Try again in $remaining seconds", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                    } else {
+                        Text(
+                            "Enter the 4-digit administrator passcode.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.7f),
+                            textAlign = TextAlign.Center
+                        )
 
-                    // PROFESSIONAL 4-BOX PIN INPUT
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
-                        // Hidden TextField to manage state and keyboard
-                        BasicTextField(
-                            value = passcode,
-                            onValueChange = { input ->
-                                if (input.length <= 4 && input.all { it.isDigit() }) {
-                                    passcode = input
+                        // VISUAL PIN BOXES
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            repeat(4) { index ->
+                                val char = passcode.getOrNull(index)
+                                val isFocused = passcode.length == index
+                                
+                                Surface(
+                                    modifier = Modifier
+                                        .size(width = 48.dp, height = 56.dp)
+                                        .border(
+                                            width = if (isFocused) 2.dp else 1.dp,
+                                            color = if (error) Color.Red 
+                                                   else if (isFocused) Color(0xFF99FF00) // PickleGreen
+                                                   else Color.White.copy(alpha = 0.2f),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ),
+                                    color = Color.Black.copy(alpha = 0.3f),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        if (char != null) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(10.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color.White)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (error) {
+                            Text(
+                                "Incorrect passcode", 
+                                color = MaterialTheme.colorScheme.error, 
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                // RIGHT SIDE: Custom Keypad (Only if not locked)
+                if (!isLocked) {
+                    Column(
+                        modifier = Modifier.weight(1.2f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        AdminNumericKeypad(
+                            onNumberClick = { num ->
+                                if (passcode.length < 4) {
+                                    val nextPass = passcode + num
+                                    passcode = nextPass
                                     error = false
-                                    if (input.length == 4) {
-                                        if (onVerify(input)) {
+                                    if (nextPass.length == 4) {
+                                        if (onVerify(nextPass)) {
                                             onSuccess()
                                         } else {
                                             error = true
@@ -676,54 +721,12 @@ fun PasscodeEntryDialog(lockoutTime: Long?, onVerify: (String) -> Boolean, onSuc
                                     }
                                 }
                             },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
-                            modifier = Modifier
-                                .focusRequester(focusRequester)
-                                .alpha(0.01f) // Hidden but functional
-                        )
-
-                        // Visual Representation (4 Boxes)
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            repeat(4) { index ->
-                                val char = passcode.getOrNull(index)
-                                val isFocused = passcode.length == index
-                                
-                                Surface(
-                                    modifier = Modifier
-                                        .size(width = 56.dp, height = 64.dp)
-                                        .border(
-                                            width = if (isFocused) 2.dp else 1.dp,
-                                            color = if (error) Color.Red 
-                                                   else if (isFocused) Color(0xFF99FF00) // PickleGreen
-                                                   else Color.White.copy(alpha = 0.2f),
-                                            shape = RoundedCornerShape(12.dp)
-                                        ),
-                                    color = Color.Black.copy(alpha = 0.3f),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        if (char != null) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(12.dp)
-                                                    .clip(CircleShape)
-                                                    .background(Color.White)
-                                            )
-                                        } else if (isFocused) {
-                                            // Optional: cursor blinker logic could go here
-                                        }
-                                    }
+                            onDeleteClick = {
+                                if (passcode.isNotEmpty()) {
+                                    passcode = passcode.dropLast(1)
+                                    error = false
                                 }
                             }
-                        }
-                    }
-
-                    if (error) {
-                        Text(
-                            "Incorrect passcode", 
-                            color = MaterialTheme.colorScheme.error, 
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
@@ -737,6 +740,54 @@ fun PasscodeEntryDialog(lockoutTime: Long?, onVerify: (String) -> Boolean, onSuc
         }
     )
 }
+
+@Composable
+fun AdminNumericKeypad(onNumberClick: (String) -> Unit, onDeleteClick: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        val rows = listOf(
+            listOf("1", "2", "3"),
+            listOf("4", "5", "6"),
+            listOf("7", "8", "9"),
+            listOf("", "0", "DEL")
+        )
+
+        rows.forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                row.forEach { key ->
+                    if (key == "") {
+                        Spacer(modifier = Modifier.size(width = 72.dp, height = 44.dp))
+                    } else {
+                        KeypadButton(
+                            text = key,
+                            isDelete = key == "DEL",
+                            onClick = { if (key == "DEL") onDeleteClick() else onNumberClick(key) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun KeypadButton(text: String, isDelete: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.size(width = 72.dp, height = 44.dp),
+        shape = RoundedCornerShape(8.dp),
+        color = if (isDelete) Color.DarkGray.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.1f),
+        tonalElevation = 2.dp
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            if (isDelete) {
+                Icon(Icons.AutoMirrored.Filled.Backspace, null, tint = Color.White, modifier = Modifier.size(20.dp))
+            } else {
+                Text(text, fontSize = 18.sp, fontWeight = FontWeight.Black, color = Color.White)
+            }
+        }
+    }
+}
+
 
 @Composable
 fun DashboardIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, size: androidx.compose.ui.unit.Dp, iconSize: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
