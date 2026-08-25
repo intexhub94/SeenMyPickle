@@ -23,6 +23,10 @@ class RecordingRepository(database: PBCamDatabase) {
 
     suspend fun getPendingUploads(): List<RecordingSession> = dao.getPendingUploads()
 
+    suspend fun markPendingUpload(sessionId: Long) {
+        dao.updateUploadResult(sessionId, RecordingStatus.PENDING_UPLOAD, null)
+    }
+
     suspend fun markProcessing(sessionId: Long) {
         dao.updateUploadResult(sessionId, RecordingStatus.PROCESSING, null)
     }

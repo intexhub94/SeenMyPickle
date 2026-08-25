@@ -262,6 +262,9 @@ class ConvertWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             setProgress(workDataOf(KEY_SESSION_ID to sessionId, PROGRESS_VAL to 0.8f, PROGRESS_MSG to step3Msg))
             watermarkedRecording.copyTo(mp4File, overwrite = true)
             
+            // SIGNAL READINESS: Mark as pending upload so Dashboard triggers Local Replay Server
+            repository.markPendingUpload(sessionId)
+            
             // HARDENING: Clean up segments ONLY on success and valid output size.
             if (mp4File.exists() && mp4File.length() > 1024 * 1024) {
                 parts.forEach { it.delete() }

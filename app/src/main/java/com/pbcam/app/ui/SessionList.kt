@@ -84,24 +84,40 @@ fun SessionList(
                         }
                     }
                     
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.padding(start = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         if (session.status == RecordingStatus.COMPLETED) {
-                            IconButton(onClick = { 
-                                if (session.filename.isNotBlank()) onPlay(session.filename) 
-                            }) {
-                                Icon(Icons.Default.PlayCircle, null, tint = MaterialTheme.colorScheme.primary)
+                            IconButton(
+                                onClick = { if (session.filename.isNotBlank()) onPlay(session.filename) },
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Icon(Icons.Default.PlayCircle, "Play Local", tint = MaterialTheme.colorScheme.primary)
                             }
                         }
                         
+                        // Action: Retry (Failed) or Resend (Completed)
                         if (session.status == RecordingStatus.FAILED || (isAdmin && session.status == RecordingStatus.COMPLETED)) {
-                            IconButton(onClick = { onRetry(session.id) }) {
-                                Icon(if (session.status == RecordingStatus.FAILED) Icons.Default.Refresh else Icons.AutoMirrored.Filled.Send, null)
+                            IconButton(
+                                onClick = { onRetry(session.id) },
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                if (session.status == RecordingStatus.FAILED) {
+                                    Icon(Icons.Default.Refresh, "Retry Pipeline", tint = Color.Red)
+                                } else {
+                                    Icon(Icons.AutoMirrored.Filled.Send, "Resend Notification", tint = MaterialTheme.colorScheme.primary)
+                                }
                             }
                         }
                         
                         if (isAdmin) {
-                            IconButton(onClick = { onDelete(session) }) {
-                                Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
+                            IconButton(
+                                onClick = { onDelete(session) },
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error)
                             }
                         }
                     }

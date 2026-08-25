@@ -601,7 +601,14 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                 // --- LOCAL REPLAY SERVER MANAGEMENT ---
                 val latest = list.sortedByDescending { it.startTime }.firstOrNull()
                 if (latest != null) {
-                    if (latest.status == RecordingStatus.COMPLETED || latest.status == RecordingStatus.UPLOADING || latest.status == RecordingStatus.SENDING_EMAIL) {
+                    val status = latest.status
+                    val canReplayLocally = status == RecordingStatus.COMPLETED || 
+                                          status == RecordingStatus.UPLOADING || 
+                                          status == RecordingStatus.SENDING_EMAIL ||
+                                          status == RecordingStatus.PENDING_UPLOAD ||
+                                          status == RecordingStatus.FAILED
+
+                    if (canReplayLocally) {
                         val file = File(latest.filename)
                         if (file.exists() && file.length() > 1024) {
                             if (_uiState.value.lastReplaySessionId != latest.id) {
@@ -887,6 +894,10 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
     fun logoutAdmin() {
         adminSessionJob?.cancel()
         _uiState.update { it.copy(isAdminAuthorized = false, adminSessionSecondsLeft = 0) }
+    }
+
+    fun clearFailedState() {
+        _uiState.update { it.copy(uploadProgress = null, uploadMessage = "", failedPipelineSessionId = null) }
     }
 
     fun updateLastFrame(bitmap: android.graphics.Bitmap) {

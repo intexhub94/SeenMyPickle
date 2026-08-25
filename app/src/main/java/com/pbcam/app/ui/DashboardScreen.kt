@@ -294,6 +294,14 @@ fun DashboardScreen(
                                     ) {
                                         Icon(Icons.Default.Refresh, "Retry", tint = Color.Red, modifier = Modifier.size(18.dp))
                                     }
+                                    
+                                    Spacer(Modifier.width(4.dp))
+                                    IconButton(
+                                        onClick = { viewModel.clearFailedState() },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(Icons.Default.Close, "Dismiss", tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
+                                    }
                                 }
                             }
                             Spacer(Modifier.height(4.dp))
@@ -345,14 +353,15 @@ fun DashboardScreen(
             }
 
             // --- NAVIGATION & UTILITY CONTROLS (Bottom Start) ---
-            // Moved here to ensure it's layered ON TOP of the recording card box
+            // Increased zIndex to ensure it's layered ON TOP of everything
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .navigationBarsPadding()
                     .displayCutoutPadding()
-                    .padding(sidePadding),
-                color = Color.Black.copy(alpha = 0.3f),
+                    .padding(sidePadding)
+                    .zIndex(10f),
+                color = Color.Black.copy(alpha = 0.4f),
                 shape = RoundedCornerShape(32.dp),
                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
             ) {
