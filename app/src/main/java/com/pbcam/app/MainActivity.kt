@@ -1,3 +1,7 @@
+@file:OptIn(
+    androidx.camera.core.ExperimentalGetImage::class,
+    androidx.compose.material3.ExperimentalMaterial3Api::class
+)
 package com.pbcam.app
 
 import android.content.Intent

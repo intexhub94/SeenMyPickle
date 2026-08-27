@@ -72,6 +72,7 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    @androidx.camera.core.ExperimentalGetImage
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -242,6 +243,7 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    @androidx.camera.core.ExperimentalGetImage
     @Composable
     fun AdminDashboard(rawCloudData: String, onRequestCameraPermission: (() -> Unit) -> Unit) {
         var deviceId by remember { mutableStateOf("") }
@@ -340,6 +342,7 @@ fun CloudTerminalTab(rawData: String) {
     }
 }
 
+@androidx.camera.core.ExperimentalGetImage
 @Composable
 fun GeneratorTab(
     deviceId: String, 
@@ -422,6 +425,7 @@ fun GeneratorTab(
     }
 }
 
+@androidx.camera.core.ExperimentalGetImage
 @Composable
 fun AdminQrScannerDialog(onResult: (String) -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
@@ -458,7 +462,6 @@ fun AdminQrScannerDialog(onResult: (String) -> Unit, onDismiss: () -> Unit) {
                                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                                 .build().apply {
                                     setAnalyzer(executor) { imageProxy ->
-                                        @OptIn(androidx.camera.core.ExperimentalGetImage::class)
                                         val mediaImage = imageProxy.image
                                         if (mediaImage != null) {
                                             val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)

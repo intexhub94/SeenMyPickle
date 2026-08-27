@@ -32,136 +32,158 @@ class UploadWorker(
         val sessionId = inputData.getLong(KEY_SESSION_ID, -1L)
         if (sessionId < 0) return Result.failure()
 
+        val app = applicationContext as PBCamApplication
+        val repository = app.recordingRepository
+        val settings = app.settingsStore
+        val authManager = GoogleAuthManager(applicationContext)
+
         try {
             setForeground(getForegroundInfo())
         } catch (e: Exception) {
             android.util.Log.e("UploadWorker", "Failed to set foreground state", e)
         }
 
-        val app = applicationContext as PBCamApplication
-        val repository = app.recordingRepository
-        val settings = app.settingsStore
-        val authManager = GoogleAuthManager(applicationContext)
-
-        val session = repository.getSession(sessionId) ?: run {
-            android.util.Log.e("UploadWorker", "Session $sessionId not found in DB")
-            return Result.failure()
-        }
-        
-        if (session.status == RecordingStatus.COMPLETED && session.gDriveUrl != null) {
-            return Result.success()
-        }
-
-        val mp4File = File(session.filename)
-        if (!mp4File.exists() || mp4File.length() < 1024) {
-            android.util.Log.e("UploadWorker", "Finalized file missing or invalid for session $sessionId")
-            repository.markFailed(sessionId, "Finalized video file missing (Processing error)")
-            return Result.failure()
-        }
-
-        val accessToken = authManager.getAccessToken() ?: run {
-            android.util.Log.w("UploadWorker", "No access token available for session $sessionId")
-            val msg = "Login required for upload"
-            repository.updateProgress(sessionId, 0f, msg)
-            return Result.failure(workDataOf(KEY_SESSION_ID to sessionId))
-        }
-
-        val sessionTag = session.courtTag ?: settings.courtTag
-        val alertEmail = session.targetEmail ?: settings.alertEmail
-        val retentionDays = settings.retentionDays
-
-        repository.markUploading(sessionId)
-        val initialMsg = "Starting upload..."
-        repository.updateProgress(sessionId, 0.05f, initialMsg)
-        setProgress(workDataOf(KEY_SESSION_ID to sessionId, PROGRESS_VAL to 0.05f, PROGRESS_MSG to initialMsg))
-        setForeground(createForegroundInfo("Uploading footage...", 5))
-
-        val shareUrl = DriveUploader.upload(accessToken, mp4File, sessionTag) { progress ->
-            val percent = (progress * 100).toInt()
-            val msg = "Uploading: $percent%"
-            
-            // ATOMIC PROGRESS UPDATE: Use runBlocking to ensure database integrity 
-            // during network-heavy upload.
-            kotlinx.coroutines.runBlocking {
-                repository.updateProgress(sessionId, progress, msg)
-                setProgress(workDataOf(KEY_SESSION_ID to sessionId, PROGRESS_VAL to progress, PROGRESS_MSG to msg))
+        try {
+            val session = repository.getSession(sessionId) ?: run {
+                android.util.Log.e("UploadWorker", "Session $sessionId not found in DB")
+                return Result.failure()
             }
             
-            if (percent % 2 == 0) {
-                setForegroundAsync(createForegroundInfo(msg, percent))
+            if (session.status == RecordingStatus.COMPLETED && session.gDriveUrl != null) {
+                return Result.success()
             }
-        } ?: run {
-            val errorMsg = "Drive upload failed for session $sessionId"
-            android.util.Log.e("UploadWorker", errorMsg)
-            repository.updateProgress(sessionId, 0f, "Upload Failed (Retry)")
-            return Result.failure(workDataOf(KEY_SESSION_ID to sessionId))
-        }
 
-        val emailMsg = "Sending final email..."
-        // ATOMIC PROGRESS UPDATE: Mark as sending email in DB
-        kotlinx.coroutines.runBlocking {
-            repository.markSending(sessionId)
-            repository.updateProgress(sessionId, 0.95f, emailMsg)
-            setProgress(workDataOf(KEY_SESSION_ID to sessionId, PROGRESS_VAL to 0.95f, PROGRESS_MSG to emailMsg))
-        }
-        setForegroundAsync(createForegroundInfo("Sending email notification...", 95))
-        
-        // --- FRESH TOKEN PROTOCOL: Refresh token before email send to prevent expiration during long uploads ---
-        val emailToken = authManager.getAccessToken() ?: accessToken
+            val mp4File = File(session.filename)
+            if (!mp4File.exists() || mp4File.length() < 1024) {
+                val errorMsg = "Finalized video file missing (Processing error)"
+                android.util.Log.e("UploadWorker", "Session $sessionId error: $errorMsg")
+                repository.markFailed(sessionId, errorMsg)
+                return Result.failure()
+            }
 
-        if (!alertEmail.isNullOrBlank()) {
-            val dateStr = SimpleDateFormat("MMMM dd, yyyy HH:mm", Locale.getDefault()).format(Date(session.startTime))
-            val finalBody = GmailNotifier.buildReadyBody(sessionTag, dateStr, shareUrl, retentionDays)
-            
-            val emailList = alertEmail.split(",").map { it.trim() }.filter { it.isNotBlank() }
-            android.util.Log.d("UploadWorker", "Attempting email delivery to ${emailList.size} recipients: $alertEmail")
-            
-            var allSuccess = true
-            
-            for (recipient in emailList) {
-                try {
-                    android.util.Log.d("UploadWorker", "Sending email to: $recipient")
-                    if (!GmailNotifier.send(applicationContext, emailToken, recipient, "SeenMyPickle Alert: New Footage for $sessionTag", finalBody)) {
-                        android.util.Log.e("UploadWorker", "Gmail API delivery failure for $recipient")
-                        allSuccess = false
-                    } else {
-                        android.util.Log.i("UploadWorker", "Successfully sent email to $recipient")
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.e("UploadWorker", "System error sending email to $recipient: ${e.message}", e)
-                    allSuccess = false
+            repository.updateProgress(sessionId, 0.01f, "AUTHENTICATING...")
+            setProgress(workDataOf(KEY_SESSION_ID to sessionId, PROGRESS_VAL to 0.01f, PROGRESS_MSG to "AUTHENTICATING..."))
+
+            val accessToken = authManager.getFreshAccessToken() ?: run {
+                val msg = "Auth Token Error: Google Sign-In required (Re-login in Settings)"
+                android.util.Log.e("UploadWorker", "Failed to obtain access token for session $sessionId")
+                repository.markFailed(sessionId, msg)
+                return Result.failure(workDataOf(KEY_SESSION_ID to sessionId))
+            }
+
+            val sessionTag = session.courtTag ?: settings.courtTag
+            val alertEmail = session.targetEmail ?: settings.alertEmail
+            val retentionDays = settings.retentionDays
+
+            repository.markUploading(sessionId)
+            val initialMsg = "SEARCHING FOLDER..."
+            repository.updateProgress(sessionId, 0.05f, initialMsg)
+            setProgress(workDataOf(KEY_SESSION_ID to sessionId, PROGRESS_VAL to 0.05f, PROGRESS_MSG to initialMsg))
+            setForeground(createForegroundInfo("Preparing Drive...", 5))
+
+            val uploadResult = DriveUploader.upload(accessToken, mp4File, sessionTag) { progress ->
+                val percent = (progress * 100).toInt()
+                val msg = when {
+                    percent < 2 -> "SEARCHING FOLDER..."
+                    percent < 5 -> "HANDSHAKING..."
+                    percent < 10 -> "STARTING DATA STREAM..."
+                    else -> "UPLOADING: $percent%"
+                }
+                
+                // ATOMIC PROGRESS UPDATE: Use runBlocking to ensure database integrity 
+                // during network-heavy upload.
+                kotlinx.coroutines.runBlocking {
+                    repository.updateProgress(sessionId, progress, msg)
+                    setProgress(workDataOf(KEY_SESSION_ID to sessionId, PROGRESS_VAL to progress, PROGRESS_MSG to msg))
+                }
+                
+                if (percent % 2 == 0) {
+                    setForegroundAsync(createForegroundInfo(msg, percent))
                 }
             }
 
-            if (allSuccess) {
-                repository.updateSession(session.copy(notificationStatus = "READY_SENT", gDriveUrl = shareUrl, status = RecordingStatus.COMPLETED))
+            val shareUrl = uploadResult.url ?: run {
+                val errorMsg = uploadResult.error ?: "Unknown Drive upload error"
+                android.util.Log.e("UploadWorker", "Session $sessionId failed: $errorMsg")
+                
+                // Smart Result: Retry on timeouts or generic errors, Fail on definite API errors
+                return if (errorMsg.contains("403") || errorMsg.contains("401") || errorMsg.contains("404") || errorMsg.contains("400") || errorMsg.contains("Google API Error")) {
+                    if (errorMsg.contains("401") || errorMsg.contains("403")) {
+                        authManager.invalidateToken(accessToken)
+                    }
+                    repository.markFailed(sessionId, "Upload Permanent Error: $errorMsg")
+                    Result.failure(workDataOf(KEY_SESSION_ID to sessionId))
+                } else {
+                    val retryMsg = "Network Error: ${errorMsg.take(50)} (Retrying...)"
+                    repository.updateProgress(sessionId, 0f, retryMsg)
+                    return Result.retry()
+                }
+            }
+
+            val emailMsg = "Sending final email..."
+            // ATOMIC PROGRESS UPDATE: Mark as sending email in DB
+            kotlinx.coroutines.runBlocking {
+                repository.markSending(sessionId)
+                repository.updateProgress(sessionId, 0.95f, emailMsg)
+                setProgress(workDataOf(KEY_SESSION_ID to sessionId, PROGRESS_VAL to 0.95f, PROGRESS_MSG to emailMsg))
+            }
+            setForegroundAsync(createForegroundInfo("Sending email notification...", 95))
+            
+            // --- FRESH TOKEN PROTOCOL ---
+            val emailToken = authManager.getFreshAccessToken() ?: accessToken
+
+            if (!alertEmail.isNullOrBlank()) {
+                val dateStr = SimpleDateFormat("MMMM dd, yyyy HH:mm", Locale.getDefault()).format(Date(session.startTime))
+                val finalBody = GmailNotifier.buildReadyBody(sessionTag, dateStr, shareUrl, retentionDays)
+                
+                val emailList = alertEmail.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                android.util.Log.d("UploadWorker", "Attempting email delivery to ${emailList.size} recipients: $alertEmail")
+                
+                var allSuccess = true
+                for (recipient in emailList) {
+                    try {
+                        if (!GmailNotifier.send(applicationContext, emailToken, recipient, "SeenMyPickle Alert: New Footage for $sessionTag", finalBody)) {
+                            allSuccess = false
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("UploadWorker", "Email system error for $recipient: ${e.message}")
+                        allSuccess = false
+                    }
+                }
+
+                if (allSuccess) {
+                    repository.updateSession(session.copy(notificationStatus = "READY_SENT", gDriveUrl = shareUrl, status = RecordingStatus.COMPLETED))
+                    repository.markCompleted(sessionId, shareUrl)
+                    updateCloudStatusWithReplay(session.filename, shareUrl)
+                } else {
+                    val retryMsg = "Email failure (Retrying...)"
+                    repository.updateProgress(sessionId, 0.90f, retryMsg)
+                    return Result.retry()
+                }
+            } else {
                 repository.markCompleted(sessionId, shareUrl)
                 updateCloudStatusWithReplay(session.filename, shareUrl)
-            } else {
-                val retryMsg = "One or more emails failed to send. Retrying..."
-                android.util.Log.w("UploadWorker", retryMsg)
-                repository.updateProgress(sessionId, 0.90f, retryMsg)
-                setProgress(workDataOf(KEY_SESSION_ID to sessionId, PROGRESS_VAL to 0.90f, PROGRESS_MSG to retryMsg))
-                return Result.retry()
             }
-        } else {
-            repository.markCompleted(sessionId, shareUrl)
-            updateCloudStatusWithReplay(session.filename, shareUrl)
-        }
 
-        repository.updateProgress(sessionId, 1.0f, "Complete")
-        setProgress(workDataOf(KEY_SESSION_ID to sessionId, PROGRESS_VAL to 1.0f, PROGRESS_MSG to "Complete"))
-        
-        // Cleanup TS parts only AFTER successful upload validation
-        val cleanupDir = mp4File.parentFile
-        if (cleanupDir != null && mp4File.exists() && mp4File.length() > 1024) {
-            val baseName = mp4File.name.replace(".mp4", "")
-            cleanupDir.listFiles { _, name ->
-                name.startsWith(baseName) && (name.endsWith(".ts") || name.endsWith(".part"))
-            }?.forEach { it.delete() }
+            repository.updateProgress(sessionId, 1.0f, "Complete")
+            
+            // Cleanup
+            val cleanupDir = mp4File.parentFile
+            if (cleanupDir != null && mp4File.exists() && mp4File.length() > 1024) {
+                val baseName = mp4File.name.replace(".mp4", "")
+                cleanupDir.listFiles { _, name ->
+                    name.startsWith(baseName) && (name.endsWith(".ts") || name.endsWith(".part"))
+                }?.forEach { it.delete() }
+            }
+            
+            return Result.success()
+
+        } catch (e: Exception) {
+            val fatalMsg = "Fatal Crash: ${e.localizedMessage ?: "Unknown"}"
+            android.util.Log.e("UploadWorker", "Fatal worker crash for session $sessionId", e)
+            repository.updateProgress(sessionId, 0f, fatalMsg)
+            return Result.retry()
         }
-        
-        return Result.success()
     }
 
     override suspend fun getForegroundInfo(): ForegroundInfo {

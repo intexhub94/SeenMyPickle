@@ -104,6 +104,7 @@ This document serves as the master logical map for the SeenMyPickle Android proj
     - **Anti-Stutter**: Enforces monotonic timestamps and constant frame rate for broadcast-quality output.
 - **`UploadWorker.kt`**:
     - **Logic**: Resumable Drive uploads -> Branded Gmail notification -> Atomic cleanup of source parts using descriptive naming filters.
+    - **API Diagnostics**: Propagates raw Google API error codes (`403`, `401`, `400`) directly to UI state and prevents infinite token retry loops on unauthenticated/unauthorized projects.
 
 ### 🔐 Data & Security (Package: `com.pbcam.app.data`)
 - **`WatermarkPosition.kt`**:

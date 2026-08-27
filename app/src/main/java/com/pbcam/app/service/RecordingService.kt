@@ -1,4 +1,7 @@
+@file:OptIn(androidx.camera.core.ExperimentalLensFacing::class)
 package com.pbcam.app.service
+
+import androidx.annotation.OptIn
 
 import android.annotation.SuppressLint
 import android.app.Notification
@@ -345,11 +348,9 @@ class RecordingService : LifecycleService() {
 
             val partFile = File(getRecordingsDir(this), "${descriptiveFileName.replace(".mp4", "")}_part${currentPartIndex}.ts")
             
-            // HARDENED RESILIENT COMMAND (Code Bible 3.5 Hardening)
-            // Restored buffers and reorder queue to absorb Wi-Fi jitter.
-            val userAgent = "SeenMyPickle/1.0"
-            val cmd = "-rtsp_transport tcp -reorder_queue_size 1024 -buffer_size 52428800 " +
-                      "-user_agent \"$userAgent\" -timeout 15000000 " +
+            // STABILIZED RTSP COMMAND (Code Bible 3.5 baseline)
+            // Simplified to core flags to ensure handshake success.
+            val cmd = "-rtsp_transport tcp -timeout 15000000 " +
                       "-i \"$rtspUrl\" -map 0:v -map 0:a? -c copy -y \"${partFile.absolutePath}\""
             
             android.util.Log.d("RecordingService", "Executing simplified RTSP command: ${SecurityUtils.sanitizeLogs(cmd)}")
@@ -429,6 +430,8 @@ class RecordingService : LifecycleService() {
         }
         currentSessionId = null
         sessionEmail = null
+        // CRITICAL: Sync UI state back to IDLE to trigger error reporting and close the dashboard banner
+        RecordingStateManager.updateState(RecordingState.IDLE)
     }
 
     @SuppressLint("MissingPermission")
@@ -472,6 +475,7 @@ class RecordingService : LifecycleService() {
         }
     }
 
+    @androidx.camera.core.ExperimentalLensFacing
     private fun getCameraSelector(): CameraSelector {
         val source = (application as PBCamApplication).settingsStore.cameraSource
         return if (source == CameraSource.USB) {

@@ -167,12 +167,13 @@ fun DashboardScreen(
                     val previewUrl = if (uiState.rtspSubUrl.length > 7) uiState.rtspSubUrl else uiState.rtspUrl
                     RtspPreview(
                         url = previewUrl,
-                        isPaused = false,
+                        isPaused = !isPreviewActive,
                         isKeyboardVisible = isKeyboardVisible,
                         onFrameCaptured = { frame -> frame?.let { viewModel.updateLastFrame(it) } }
                     )
                 } else {
                     InternalCameraPreview(
+                        isPaused = !isPreviewActive,
                         isKeyboardVisible = isKeyboardVisible,
                         onFrameCaptured = { frame -> frame?.let { viewModel.updateLastFrame(it) } }
                     )
@@ -852,17 +853,19 @@ fun StatusPill(isConfigReady: Boolean, shadow: Shadow) {
 }
 
 @Composable
-fun InternalCameraPreview(isKeyboardVisible: Boolean, onFrameCaptured: (Bitmap?) -> Unit) {
+fun InternalCameraPreview(isPaused: Boolean, isKeyboardVisible: Boolean, onFrameCaptured: (Bitmap?) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val previewView = remember { PreviewView(context) }
     
     // Periodically capture frame
-    LaunchedEffect(isKeyboardVisible) {
-        while (true) {
-            delay(1.seconds)
-            if (!isKeyboardVisible) {
-                onFrameCaptured(previewView.bitmap)
+    LaunchedEffect(isPaused, isKeyboardVisible) {
+        if (!isPaused) {
+            while (true) {
+                delay(1.seconds)
+                if (!isKeyboardVisible) {
+                    onFrameCaptured(previewView.bitmap)
+                }
             }
         }
     }
@@ -871,6 +874,10 @@ fun InternalCameraPreview(isKeyboardVisible: Boolean, onFrameCaptured: (Bitmap?)
         factory = { previewView },
         modifier = Modifier.fillMaxSize(),
         update = { view ->
+            if (isPaused) {
+                ProcessCameraProvider.getInstance(context).get().unbindAll()
+                return@AndroidView
+            }
             val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
             cameraProviderFuture.addListener({
                 val cameraProvider = cameraProviderFuture.get()
@@ -936,14 +943,24 @@ fun RtspPreview(url: String, isPaused: Boolean, isKeyboardVisible: Boolean, onFr
             .setUri(url)
             .setMimeType(MimeTypes.APPLICATION_RTSP)
             .build()
-        val mediaSource = Factory()
-            .setForceUseRtpTcp(true)
-            .setUserAgent("SeenMyPickle/1.0")
-            .createMediaSource(mediaItem)
             
-        exoPlayer.setMediaSource(mediaSource)
-        exoPlayer.prepare()
-        exoPlayer.play()
+        // HARDENED RECONNECTION LOOP
+        var attempt = 0
+        while (attempt < 3) {
+            val mediaSource = Factory()
+                .setForceUseRtpTcp(true)
+                .createMediaSource(mediaItem)
+                
+            exoPlayer.setMediaSource(mediaSource)
+            exoPlayer.prepare()
+            exoPlayer.play()
+            
+            // Wait for failure or success
+            delay(5.seconds)
+            if (exoPlayer.playbackState == Player.STATE_READY) break
+            attempt++
+            android.util.Log.w("RtspPreview", "Connection attempt $attempt failed, retrying...")
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {

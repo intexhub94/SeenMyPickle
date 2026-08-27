@@ -54,6 +54,7 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
 
     private var statusListener: ValueEventListener? = null
     private var retryJob: Job? = null
+    private var watchdogJob: Job? = null
 
     init {
         checkFirebaseConnection()
@@ -95,6 +96,7 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
         _uiState.update { it.copy(pairedDeviceId = deviceId, isPaired = true) }
         prefs?.edit()?.putString("paired_device_id", deviceId)?.apply()
         startObservingStatus(deviceId)
+        startWatchdog()
     }
 
     fun unpairDevice() {
@@ -102,6 +104,7 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
         statusListener?.let { 
             getDb().getReference("live_status/${_uiState.value.pairedDeviceId}").removeEventListener(it)
         }
+        watchdogJob?.cancel()
         _uiState.update { TvUiState(isSplashScreenActive = false) }
     }
 
@@ -245,11 +248,32 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    private fun startWatchdog() {
+        watchdogJob?.cancel()
+        watchdogJob = viewModelScope.launch {
+            while (true) {
+                delay(5000) // Check every 5 seconds
+                val lastUpdate = _uiState.value.lastUpdateTimestamp
+                if (lastUpdate > 0L) {
+                    val staleTime = System.currentTimeMillis() - lastUpdate
+                    if (staleTime > 30000) { // 30 second timeout
+                        if (_uiState.value.isTabletOnline) {
+                            android.util.Log.w("TvWatchdog", "Tablet heartbeat stale ($staleTime ms). Forcing offline.")
+                            _uiState.update { it.copy(isTabletOnline = false) }
+                            startRetryCountdown()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         statusListener?.let {
             getDb().getReference("live_status/${_uiState.value.pairedDeviceId}").removeEventListener(it)
         }
         retryJob?.cancel()
+        watchdogJob?.cancel()
     }
 }

@@ -17,67 +17,88 @@ import org.dhatim.fastexcel.Workbook
 import org.dhatim.fastexcel.Worksheet
 import com.pbcam.app.data.db.RecordingSession
 
+data class UploadResult(val url: String? = null, val error: String? = null)
+
 object DriveUploader {
     private const val FOLDER_NAME = "pb cam footage"
 
-    fun upload(accessToken: String, file: File, courtTag: String, onProgress: (Float) -> Unit = {}): String? {
+    fun upload(accessToken: String, file: File, courtTag: String, onProgress: (Float) -> Unit = {}): UploadResult {
         val totalSize = file.length()
-        if (totalSize == 0L) return null
+        if (totalSize == 0L) return UploadResult(error = "File is empty")
 
+        onProgress(0.01f) // Initial handshake progress
         val folderId = getOrCreateFolder(accessToken)
         
         // 3-Strike Retry for handshake
         var sessionUrl: String? = null
+        var lastHandshakeError = "Initialization failed"
         for (attempt in 1..3) {
-            sessionUrl = initiateResumableUpload(accessToken, file.name, courtTag, folderId)
-            if (sessionUrl != null) break
-            android.util.Log.w("DriveUploader", "Handshake attempt $attempt failed, retrying...")
+            val initResult = initiateResumableUpload(accessToken, file.name, courtTag, folderId, totalSize)
+            if (initResult.url != null && initResult.url.startsWith("http")) {
+                sessionUrl = initResult.url
+                break
+            }
+            lastHandshakeError = initResult.error ?: "Handshake attempt $attempt failed"
+            if (lastHandshakeError.contains("403") || lastHandshakeError.contains("401") || lastHandshakeError.contains("400")) {
+                return UploadResult(error = lastHandshakeError)
+            }
+            android.util.Log.w("DriveUploader", "$lastHandshakeError, retrying...")
             Thread.sleep(2000)
         }
         
-        if (sessionUrl == null) return null
+        if (sessionUrl == null || !sessionUrl.startsWith("http")) {
+            return UploadResult(error = "Handshake failed: $lastHandshakeError")
+        }
         
         // True Resume check
-        val startByte = getUploadStatus(sessionUrl)
+        val startByte = getUploadStatus(accessToken, sessionUrl)
         if (startByte >= totalSize) {
-             val fileId = finalizeUpload(sessionUrl) ?: return null
+             val fileId = finalizeUpload(accessToken, sessionUrl) ?: return UploadResult(error = "Finalize failed after full data detected")
              makePublic(accessToken, fileId)
-             return "https://drive.google.com/file/d/$fileId/view"
+             return UploadResult(url = "https://drive.google.com/file/d/$fileId/view")
         }
+
+        onProgress(startByte.toFloat() / totalSize.toFloat().coerceAtLeast(1f))
 
         val connection = (URL(sessionUrl).openConnection() as HttpConn).apply {
             requestMethod = "PUT"
+            setRequestProperty("Authorization", "Bearer $accessToken")
             setRequestProperty("Content-Range", "bytes $startByte-${totalSize - 1}/$totalSize")
             setRequestProperty("Content-Length", (totalSize - startByte).toString())
             setRequestProperty("Content-Type", "video/mp4")
-            setChunkedStreamingMode(1024 * 1024) 
             doOutput = true
             connectTimeout = 60000
             readTimeout = 60000
         }
 
-        var bytesUploaded = startByte
-        connection.outputStream.use { out ->
-            file.inputStream().buffered(1024 * 1024).use { input ->
-                if (startByte > 0) input.skip(startByte)
-                val buffer = ByteArray(1024 * 1024)
-                var bytesRead: Int
-                while (input.read(buffer).also { bytesRead = it } != -1) {
-                    out.write(buffer, 0, bytesRead)
-                    bytesUploaded += bytesRead
-                    onProgress(bytesUploaded.toFloat() / totalSize.toFloat())
+        try {
+            var bytesUploaded = startByte
+            connection.outputStream.use { out ->
+                file.inputStream().buffered(2 * 1024 * 1024).use { input ->
+                    if (startByte > 0) input.skip(startByte)
+                    val buffer = ByteArray(1024 * 1024)
+                    var bytesRead: Int
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        out.write(buffer, 0, bytesRead)
+                        bytesUploaded += bytesRead
+                        onProgress(bytesUploaded.toFloat() / totalSize.toFloat())
+                    }
                 }
             }
+        } catch (e: Exception) {
+            return UploadResult(error = "Stream error: ${e.message}")
         }
 
         return if (connection.responseCode in 200..299) {
             val response = connection.inputStream.bufferedReader().readText()
-            val fileId = JSONObject(response).optString("id", null) ?: return null
+            val fileId = JSONObject(response).optString("id", null) ?: return UploadResult(error = "No ID in success response")
             makePublic(accessToken, fileId)
-            "https://drive.google.com/file/d/$fileId/view"
+            UploadResult(url = "https://drive.google.com/file/d/$fileId/view")
         } else {
-            android.util.Log.e("DriveUploader", "Upload failed with code: ${connection.responseCode}")
-            null
+            val error = connection.errorStream?.bufferedReader()?.readText() ?: "No error body"
+            val msg = "Upload failed with code: ${connection.responseCode}, Error: $error"
+            android.util.Log.e("DriveUploader", msg)
+            UploadResult(error = "Google API Error ${connection.responseCode}: $error")
         }
     }
 
@@ -88,6 +109,8 @@ object DriveUploader {
         val connection = (URL(searchUrl).openConnection() as HttpConn).apply {
             requestMethod = "GET"
             setRequestProperty("Authorization", "Bearer $accessToken")
+            connectTimeout = 20000
+            readTimeout = 20000
         }
 
         if (connection.responseCode == 200) {
@@ -96,6 +119,9 @@ object DriveUploader {
             if (files.length() > 0) {
                 return files.getJSONObject(0).getString("id")
             }
+        } else {
+            val error = connection.errorStream?.bufferedReader()?.readText()
+            android.util.Log.e("DriveUploader", "Folder search failed: ${connection.responseCode} - $error")
         }
 
         val metadata = JSONObject()
@@ -107,16 +133,22 @@ object DriveUploader {
             setRequestProperty("Authorization", "Bearer $accessToken")
             setRequestProperty("Content-Type", "application/json")
             doOutput = true
+            connectTimeout = 20000
+            readTimeout = 20000
         }
         createConnection.outputStream.use { it.write(metadata.toString().toByteArray()) }
         
         return if (createConnection.responseCode in 200..299) {
             val response = createConnection.inputStream.bufferedReader().readText()
             JSONObject(response).getString("id")
-        } else null
+        } else {
+            val error = createConnection.errorStream?.bufferedReader()?.readText()
+            android.util.Log.e("DriveUploader", "Folder creation failed: ${createConnection.responseCode} - $error")
+            null
+        }
     }
 
-    private fun initiateResumableUpload(accessToken: String, filename: String, courtTag: String, folderId: String?): String? {
+    private fun initiateResumableUpload(accessToken: String, filename: String, courtTag: String, folderId: String?, fileSize: Long): UploadResult {
         val metadata = JSONObject()
             .put("name", filename)
             .put("mimeType", "video/mp4")
@@ -126,34 +158,61 @@ object DriveUploader {
             metadata.put("parents", JSONArray().put(folderId))
         }
 
+        val bodyBytes = metadata.toString().toByteArray(java.nio.charset.StandardCharsets.UTF_8)
+
+        return try {
             val connection = (URL("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable")
                 .openConnection() as HttpConn).apply {
                 requestMethod = "POST"
                 setRequestProperty("Authorization", "Bearer $accessToken")
                 setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                setRequestProperty("Content-Length", bodyBytes.size.toString())
                 setRequestProperty("X-Upload-Content-Type", "video/mp4")
+                setRequestProperty("X-Upload-Content-Length", fileSize.toString())
                 doOutput = true
-                connectTimeout = 60000
-                readTimeout = 60000
+                connectTimeout = 30000
+                readTimeout = 30000
             }
 
-        connection.outputStream.use { it.write(metadata.toString().toByteArray()) }
+            connection.outputStream.use { it.write(bodyBytes) }
 
-        if (connection.responseCode != 200) return null
-        return connection.getHeaderField("Location")
+            if (connection.responseCode !in 200..201) {
+                val error = connection.errorStream?.bufferedReader()?.readText() ?: "No error body"
+                val msg = "Google API Error ${connection.responseCode}: $error"
+                android.util.Log.e("DriveUploader", "Resumable upload initialization failed: $msg")
+                UploadResult(error = msg)
+            } else {
+                val location = connection.getHeaderField("Location")
+                if (location == null || !location.startsWith("http")) {
+                    android.util.Log.e("DriveUploader", "Invalid or missing Location header: $location")
+                    UploadResult(error = "Invalid or missing Location header")
+                } else {
+                    UploadResult(url = location)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("DriveUploader", "Resumable upload exception: ${e.message}", e)
+            UploadResult(error = "Connection exception: ${e.message}")
+        }
     }
 
-    private fun getUploadStatus(sessionUrl: String): Long {
+    private fun getUploadStatus(accessToken: String, sessionUrl: String): Long {
         return try {
             val connection = (URL(sessionUrl).openConnection() as HttpConn).apply {
                 requestMethod = "PUT"
+                setRequestProperty("Authorization", "Bearer $accessToken")
                 setRequestProperty("Content-Range", "bytes */*")
+                connectTimeout = 20000
+                readTimeout = 20000
             }
             if (connection.responseCode == 308) {
                 val range = connection.getHeaderField("Range")
                 if (range != null && range.startsWith("bytes=")) {
                     return range.substringAfter("-").toLong() + 1
                 }
+            } else if (connection.responseCode !in 200..299) {
+                val error = connection.errorStream?.bufferedReader()?.readText()
+                android.util.Log.e("DriveUploader", "Status check failed: ${connection.responseCode} - $error")
             }
             0L
         } catch (e: Exception) {
@@ -161,9 +220,10 @@ object DriveUploader {
         }
     }
 
-    private fun finalizeUpload(sessionUrl: String): String? {
+    private fun finalizeUpload(accessToken: String, sessionUrl: String): String? {
         val connection = (URL(sessionUrl).openConnection() as HttpConn).apply {
             requestMethod = "PUT"
+            setRequestProperty("Authorization", "Bearer $accessToken")
         }
         if (connection.responseCode in 200..299) {
             val response = connection.inputStream.bufferedReader().readText()

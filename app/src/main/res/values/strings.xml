@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">SeenMyPickle</string>
     <string name="google_oauth_web_client_id">940501213286-ncc1oksblh7lt1ohu2hn7hct5prtsptd.apps.googleusercontent.com</string>
-    <string name="google_oauth_android_client_id">940501213286-38qsivpjeoev9m7578p31s63re1h9j3g.apps.googleusercontent.com</string>
+    <string name="google_oauth_android_client_id">940501213286-38qsbemsv1utkkscvtfqooiqltmp7bj6.apps.googleusercontent.com</string>
     <string name="recording_channel_name">Recording Service</string>
     <string name="recording_notification_title">SeenMyPickle: Active Recording</string>
     <string name="google_drive_api_key">AIzaSyAJyGH4lPzCr5pjTgh-PWRYwnggEpMURr4</string>

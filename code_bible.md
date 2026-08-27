@@ -226,6 +226,9 @@ Key highlights include:
     - **Atomic Shutdown**: `RecordingService` MUST explicitly wait for the recording loop to finalize and background workers to be enqueued before calling `stopSelf()`.
     - **Atomic Handoff (Round 25)**: The background pipeline MUST NOT rely on static delays (e.g., 5s cooldown). `ConvertWorker` MUST implement a **File Stability Protocol**, monitoring segment file sizes across 3x1s intervals to confirm the OS has released all file handles before concatenation begins.
     - **Fresh Token Protocol**: Background workers performing multi-stage cloud tasks (e.g., Upload followed by Email) MUST re-request the Google Access Token right before the final delivery stage to prevent expiration during long uploads.
+    - **Upload Worker Hardening & Error Transparency**:
+        - **Transparent Error Propagation**: `DriveUploader` MUST NOT suppress HTTP API error codes (`403`, `401`, `400`). It MUST propagate full error bodies (`Google API Error 403: ...`) directly to `UploadWorker`.
+        - **No Infinite Auth Retries**: `UploadWorker` MUST NOT retry endlessly when token acquisition fails or permanent Google API errors occur. It MUST mark the session `FAILED` with actionable UI status messages (`Auth Token Error: Google Sign-In required`) so administrators know to re-authenticate under active project credentials.
     - **Socket Release**: When a match starts, stops, or pauses, the Dashboard MUST aggressively release all camera resources (network sockets and hardware decoders). The `RecordingService` MUST NOT begin its capture loop until the UI has confirmed resource disposal.
     - **Concat Hardening**: Combining parts MUST use `-fflags +igndts+genpts` and `-avoid_negative_ts make_zero` to eliminate visual stutter and timestamp drifts.
 - **Data Integrity & Success Logic**:

@@ -5,6 +5,20 @@ Strictly follows the rules in `ai_workflow_rules.md`.
 
 ---
 
+## 2026-08-28: Google Cloud Project Migration Upload Pipeline Failure Fix
+- **User Observation**: Upload pipeline was consistently failing and getting stuck after changing SHA-1 and migrating to the new `seemypickle` Firebase/Google Cloud project (`940501213286`).
+- **Technical Root Cause**:
+    1. **Suppressed API Errors in `DriveUploader`**: When HTTP `403` or `401` errors occurred during folder search or upload initialization, `DriveUploader` masked the true HTTP error message and returned a generic string `"Handshake failed: Handshake attempt 3 failed (No Location header)"`.
+    2. **Infinite Retry Loop in `UploadWorker`**: Because `"403"` / `"401"` was omitted from the error string, `UploadWorker` assumed a transient network glitch and continuously executed `Result.retry()`. Additionally, when `getFreshAccessToken()` returned `null`, `UploadWorker` checked `authManager.isAuthenticated()` (which was `true` due to a stale cached account), looping endlessly instead of surfacing an auth error.
+    3. **Aggressive Token Clears**: `GoogleAuthManager.getFreshAccessToken()` was clearing active tokens on every invocation before fetching, triggering scope/consent errors on new project credentials.
+- **Technical Resolution**: 
+    1. **Transparent API Error Reporting**: Updated `DriveUploader.initiateResumableUpload` and `upload` in `CloudClients.kt` to capture and return exact HTTP status codes and error bodies (`Google API Error 403: ...`).
+    2. **Token & Error Flow Hardening**: Refactored `GoogleAuthManager.getFreshAccessToken()` to safely attempt token retrieval first without preemptive clearing. Updated `UploadWorker.kt` to mark sessions as `FAILED` with explicit user-facing errors (`Auth Token Error: Google Sign-In required` or `Upload Permanent Error: Google API Error 403: ...`) when unrecoverable API/Auth errors occur.
+- **Impact on Golden Build**: Prevents silent background retry loops, provides 100% diagnostic transparency for Google Drive/Gmail API errors, and guarantees clear UI feedback for re-authentication.
+- **Context Sufficiency**: Yes.
+
+---
+
 ## 2026-08-23: Deep RTSP Diagnostics Fix
 - **User Observation**: Match history showed a Code 1 error with the FFmpeg banner text, which didn't explain why the recording failed.
 - **Technical Resolution**: 

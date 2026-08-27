@@ -277,6 +277,8 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
 
                 if (state == RecordingState.RECORDING) {
                     startRecordingTimer()
+                    // Clear any previous pipeline errors when a new match begins
+                    clearFailedState()
                     // Aggressive Handoff: Ensure preview is explicitly stopped when recording begins
                     stopPreview()
                 } else if (state == RecordingState.IDLE) {
@@ -380,6 +382,8 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                 if (isConnected) {
                     db.child("isOnline").setValue(true)
                     db.child("isOnline").onDisconnect().setValue(false)
+                    // Pulse immediately on reconnect
+                    syncLiveStatusToCloud()
                 }
             }
             override fun onCancelled(error: DatabaseError) {
@@ -556,14 +560,29 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                         .let { if (it == -1L) active.progress.getLong(UploadWorker.KEY_SESSION_ID, -1L) else it }
                     
                     val progress = active.progress.getFloat("progress_val", 0f)
-                    val msg = if (active.state == WorkInfo.State.ENQUEUED) {
-                        "Waiting to retry..."
+                    val progressMsg = active.progress.getString("progress_msg")
+                    
+                    var msg = if (active.state == WorkInfo.State.ENQUEUED) {
+                        progressMsg ?: "Waiting to retry..."
                     } else {
-                        active.progress.getString("progress_msg") ?: "Processing..."
+                        progressMsg ?: "Processing..."
                     }
+                    
+                    // FALLBACK: If WorkManager cleared progress (common during ENQUEUED retry wait),
+                    // pull the last known message from the database session.
+                    if (sessionId != -1L && (progressMsg == null || msg == "Waiting to retry...")) {
+                        val session = _uiState.value.sessions.find { it.id == sessionId }
+                        if (session != null && !session.progressMessage.isNullOrBlank()) {
+                            msg = session.progressMessage
+                        }
+                    }
+
                     _uiState.update { it.copy(uploadProgress = progress, uploadMessage = msg, failedPipelineSessionId = null) }
                 } else {
-                    val failed = infos.find { it.state == WorkInfo.State.FAILED }
+                    // Only track the LATEST failed session to prevent "stuck" errors from old history
+                    val failed = infos.filter { it.state == WorkInfo.State.FAILED }
+                        .maxByOrNull { it.outputData.getLong("session_id", -1L) }
+                        
                     if (failed != null) {
                         val sessionId = failed.outputData.getLong("session_id", -1L)
                         

@@ -59,6 +59,40 @@ class GoogleAuthManager(private val context: Context) {
         }
     }
 
+    suspend fun getFreshAccessToken(): String? = withContext(Dispatchers.IO) {
+        val googleAccount = getLastSignedInAccount() ?: run {
+            Log.w("GoogleAuthManager", "getFreshAccessToken: No signed-in Google account")
+            return@withContext null
+        }
+        val account = googleAccount.account ?: run {
+            Log.w("GoogleAuthManager", "getFreshAccessToken: No account in GoogleSignInAccount")
+            return@withContext null
+        }
+        val scopeString = "oauth2:$DRIVE_FILE_SCOPE $DRIVE_READONLY_SCOPE $GMAIL_SEND_SCOPE"
+
+        try {
+            val token = GoogleAuthUtil.getToken(context, account, scopeString)
+            Log.i("GoogleAuthManager", "Successfully obtained fresh access token")
+            token
+        } catch (e: Exception) {
+            Log.e("GoogleAuthManager", "getFreshAccessToken primary attempt failed: ${e.message} (${e.javaClass.simpleName})")
+            // Invalidate cached token if possible and retry once
+            try {
+                val cachedToken = GoogleAuthUtil.getToken(context, account, scopeString)
+                GoogleAuthUtil.clearToken(context, cachedToken)
+            } catch (_: Exception) {}
+
+            try {
+                val tokenRetry = GoogleAuthUtil.getToken(context, account, scopeString)
+                Log.i("GoogleAuthManager", "Successfully obtained token on retry after clear")
+                tokenRetry
+            } catch (retryException: Exception) {
+                Log.e("GoogleAuthManager", "getFreshAccessToken retry failed: ${retryException.message} (${retryException.javaClass.simpleName})", retryException)
+                null
+            }
+        }
+    }
+
     fun handleSignInResult(data: Intent?): Result<GoogleSignInAccount> {
         val task = GoogleSignIn.getSignedInAccountFromIntent(data)
         return try {
@@ -101,6 +135,15 @@ class GoogleAuthManager(private val context: Context) {
                 signInClient.signOut().addOnCompleteListener(activity) { onComplete() }
             }
         }.start()
+    }
+
+    fun invalidateToken(token: String) {
+        try {
+            GoogleAuthUtil.clearToken(context, token)
+            Log.i("GoogleAuthManager", "Token invalidated manually.")
+        } catch (e: Exception) {
+            Log.w("GoogleAuthManager", "Failed to invalidate token: ${e.message}")
+        }
     }
 
     companion object {
