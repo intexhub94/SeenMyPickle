@@ -4,7 +4,7 @@
     <selectionStates>
       <SelectionState runConfigName="app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-08-25T22:39:02.805442211Z">
+        <DropdownSelection timestamp="2026-08-27T22:07:31.990723531Z">
           <Target type="DEFAULT_BOOT">
             <handle>
               <DeviceId pluginId="PhysicalDevice" identifier="serial=AF2SVB3703002560" />
@@ -57,7 +57,7 @@
       </SelectionState>
       <SelectionState runConfigName="tv">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-08-25T19:16:38.751322147Z">
+        <DropdownSelection timestamp="2026-08-27T22:08:00.056195343Z">
           <Target type="DEFAULT_BOOT">
             <handle>
               <DeviceId pluginId="LocalEmulator" identifier="path=/home/intexhub/.android/avd/Medium_Tablet.avd" />

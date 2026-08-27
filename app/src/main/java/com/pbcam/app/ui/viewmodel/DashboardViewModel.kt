@@ -137,6 +137,7 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
     private var heartbeatJob: Job? = null
     private var presenceHeartbeatJob: Job? = null
     private var hasAutoTriggeredPreview = false
+    private val dismissedFailedSessionIds = java.util.Collections.synchronizedSet(mutableSetOf<Long>())
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: android.net.Network) {
@@ -579,21 +580,30 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
 
                     _uiState.update { it.copy(uploadProgress = progress, uploadMessage = msg, failedPipelineSessionId = null) }
                 } else {
-                    // Only track the LATEST failed session to prevent "stuck" errors from old history
-                    val failed = infos.filter { it.state == WorkInfo.State.FAILED }
-                        .maxByOrNull { it.outputData.getLong("session_id", -1L) }
-                        
-                    if (failed != null) {
-                        val sessionId = failed.outputData.getLong("session_id", -1L)
-                        
+                    // Only track failed sessions that are NOT dismissed AND NOT already completed in DB
+                    val failedList = infos.filter { it.state == WorkInfo.State.FAILED }
+                    val validFailed = failedList.mapNotNull { failedInfo ->
+                        val sid = failedInfo.outputData.getLong("session_id", -1L)
+                        if (sid != -1L) {
+                            if (dismissedFailedSessionIds.contains(sid)) return@mapNotNull null
+                            val dbSession = _uiState.value.sessions.find { s -> s.id == sid }
+                            if (dbSession != null && dbSession.status == RecordingStatus.COMPLETED) {
+                                return@mapNotNull null // Successfully completed in DB (e.g. after retry)!
+                            }
+                            Pair(sid, failedInfo)
+                        } else null
+                    }.maxByOrNull { it.first }
+
+                    if (validFailed != null) {
+                        val sessionId = validFailed.first
                         _uiState.update { it.copy(
                             uploadProgress = 0f, 
                             uploadMessage = "FAILED", 
-                            failedPipelineSessionId = if (sessionId != -1L) sessionId else null
+                            failedPipelineSessionId = sessionId
                         ) }
                     } else {
                         val completed = infos.filter { it.state == WorkInfo.State.SUCCEEDED }
-                        if (completed.isNotEmpty() && _uiState.value.uploadProgress != null) {
+                        if (completed.isNotEmpty() && _uiState.value.uploadProgress != null && _uiState.value.uploadMessage != "COMPLETE") {
                             _uiState.update { it.copy(uploadProgress = 1f, uploadMessage = "COMPLETE", failedPipelineSessionId = null) }
                             
                             autoDismissJob?.cancel()
@@ -602,7 +612,7 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                                 _uiState.update { it.copy(uploadProgress = null, uploadMessage = "", failedPipelineSessionId = null) }
                             }
                         } else if (infos.all { it.state.isFinished }) {
-                            if (_uiState.value.uploadProgress != null && (autoDismissJob?.isActive != true)) {
+                            if (_uiState.value.uploadProgress != null && _uiState.value.uploadMessage != "COMPLETE" && (autoDismissJob?.isActive != true)) {
                                 _uiState.update { it.copy(uploadProgress = null, uploadMessage = "", failedPipelineSessionId = null) }
                             }
                         }
@@ -916,6 +926,10 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun clearFailedState() {
+        val currentFailedId = _uiState.value.failedPipelineSessionId
+        if (currentFailedId != null) {
+            dismissedFailedSessionIds.add(currentFailedId)
+        }
         _uiState.update { it.copy(uploadProgress = null, uploadMessage = "", failedPipelineSessionId = null) }
     }
 
@@ -945,6 +959,8 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun retryUpload(sessionId: Long) {
+        dismissedFailedSessionIds.remove(sessionId)
+        _uiState.update { it.copy(uploadProgress = null, uploadMessage = "", failedPipelineSessionId = null) }
         viewModelScope.launch(Dispatchers.IO) {
             val session = repository.getSession(sessionId)
             if (session != null) {
