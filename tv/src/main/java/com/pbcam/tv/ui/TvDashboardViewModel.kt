@@ -187,7 +187,12 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
                     val duration = snapshot.child("duration").getValue(Long::class.java) ?: 0L
                     val players = snapshot.child("players").children.mapNotNull { it.getValue(String::class.java) }
                     val courtTag = snapshot.child("courtTag").getValue(String::class.java) ?: ""
-                    val isOnline = snapshot.child("isOnline").getValue(Boolean::class.java) ?: false
+                    val rawIsOnline = snapshot.child("isOnline").getValue(Boolean::class.java) ?: false
+                    val remoteTimestamp = snapshot.child("timestamp").getValue(Long::class.java) ?: 0L
+                    val timestampAge = if (remoteTimestamp > 0L) (localReceiveTime - remoteTimestamp) else 999999L
+
+                    // Tablet is ONLY considered online if explicitly isOnline=true AND heartbeat timestamp is fresh (<15s)
+                    val isOnline = rawIsOnline && (timestampAge in 0..15000L)
                     val remoteReplayId: Long = snapshot.child("lastReplaySessionId").getValue(Long::class.java) ?: -1L
                     val lastSyncTime = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(localReceiveTime))
 
