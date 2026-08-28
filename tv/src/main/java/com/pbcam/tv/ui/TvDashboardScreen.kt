@@ -53,7 +53,7 @@ fun TvDashboardScreen(viewModel: TvDashboardViewModel = viewModel()) {
     if (uiState.isSplashScreenActive) {
         SplashView()
     } else if (!uiState.isPaired) {
-        PairingScreen(onPair = { viewModel.pairDevice(it) })
+        PairingScreen(uiState = uiState, onPair = { viewModel.pairDevice(it) })
     } else {
         Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
             // Layer 0: Video Player
@@ -194,6 +194,7 @@ fun AdminPanelDialog(uiState: TvUiState, onDismiss: () -> Unit, onUnpair: () -> 
                 
                 DiagnosticRow("Paired Device ID", uiState.pairedDeviceId)
                 DiagnosticRow("Firebase Link", if (uiState.firebaseConnected) "CONNECTED" else "DISCONNECTED", if (uiState.firebaseConnected) Color(0xFF99FF00) else Color.Red)
+                DiagnosticRow("Sync Status", uiState.debugInfo, if (uiState.isTabletOnline) Color(0xFF99FF00) else Color.Yellow)
                 DiagnosticRow("Cloud Latency", if (uiState.lastUpdateTimestamp > 0L) sdf.format(Date(uiState.lastUpdateTimestamp)) else "N/A")
                 DiagnosticRow("Active RTSP URL", if (uiState.rtspSubUrl != "") uiState.rtspSubUrl else if (uiState.rtspUrl != "") uiState.rtspUrl else "NONE")
                 DiagnosticRow("Local Replay", if (uiState.localReplayUrl != "") uiState.localReplayUrl else "NOT READY")
@@ -758,7 +759,7 @@ fun MatchInfoOverlay(uiState: TvUiState) {
 }
 
 @Composable
-fun PairingScreen(onPair: (String) -> Unit) {
+fun PairingScreen(uiState: TvUiState, onPair: (String) -> Unit) {
     var deviceId by remember { mutableStateOf("") }
 
     Box(
@@ -789,6 +790,15 @@ fun PairingScreen(onPair: (String) -> Unit) {
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF99FF00))
             ) {
                 Text("PAIR NOW", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+            }
+            if (uiState.debugInfo.isNotBlank() && uiState.debugInfo != "Initializing...") {
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = uiState.debugInfo,
+                    color = if (uiState.debugInfo.startsWith("Sync OK")) Color(0xFF99FF00) else Color.Yellow,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }

@@ -15,35 +15,50 @@ object LocalReplayServer {
     private var serverSocket: ServerSocket? = null
     private var executor: ExecutorService? = null
     private var currentFile: File? = null
+    private var statusJsonProvider: (() -> String)? = null
     private var isRunning = false
 
+    fun startServer(provider: () -> String) {
+        statusJsonProvider = provider
+        if (!isRunning) {
+            isRunning = true
+            executor = Executors.newSingleThreadExecutor()
+            executor?.execute { runServer() }
+        }
+    }
+
     fun start(file: File) {
-        if (isRunning) stop()
-        
         currentFile = file
-        isRunning = true
-        executor = Executors.newSingleThreadExecutor()
-        
-        executor?.execute {
-            try {
-                // HARDENING: Enable address reuse to fix EADDRINUSE during quick restarts.
-                serverSocket = ServerSocket().apply {
-                    reuseAddress = true
-                    bind(java.net.InetSocketAddress(PORT))
-                }
-                Log.d(TAG, "Server started on port $PORT serving ${file.name}")
-                
-                while (isRunning) {
-                    val client = serverSocket?.accept() ?: break
-                    handleClient(client)
-                }
-            } catch (e: Exception) {
-                if (isRunning) {
-                    Log.e(TAG, "Server error: ${e.message}")
-                }
-            } finally {
-                stop()
+        if (!isRunning) {
+            isRunning = true
+            executor = Executors.newSingleThreadExecutor()
+            executor?.execute { runServer() }
+        }
+    }
+
+    fun setReplayFile(file: File?) {
+        currentFile = file
+    }
+
+    private fun runServer() {
+        try {
+            // HARDENING: Enable address reuse to fix EADDRINUSE during quick restarts.
+            serverSocket = ServerSocket().apply {
+                reuseAddress = true
+                bind(java.net.InetSocketAddress(PORT))
             }
+            Log.d(TAG, "Server started on port $PORT")
+            
+            while (isRunning) {
+                val client = serverSocket?.accept() ?: break
+                handleClient(client)
+            }
+        } catch (e: Exception) {
+            if (isRunning) {
+                Log.e(TAG, "Server error: ${e.message}")
+            }
+        } finally {
+            stop()
         }
     }
 
@@ -67,7 +82,19 @@ object LocalReplayServer {
                 val line = input.readLine() ?: return@execute
                 android.util.Log.d(TAG, "Request: $line")
                 
-                if (line.startsWith("GET /replay")) {
+                if (line.startsWith("GET /status")) {
+                    val json = statusJsonProvider?.invoke() ?: "{\"isOnline\":true}"
+                    val output = client.getOutputStream()
+                    val header = "HTTP/1.1 200 OK\r\n" +
+                            "Content-Type: application/json\r\n" +
+                            "Content-Length: ${json.toByteArray().size}\r\n" +
+                            "Access-Control-Allow-Origin: *\r\n" +
+                            "Connection: close\r\n\r\n"
+                    output.write(header.toByteArray())
+                    output.write(json.toByteArray())
+                    output.flush()
+                    Log.d(TAG, "Served /status JSON")
+                } else if (line.startsWith("GET /replay")) {
                     val file = currentFile
                     if (file != null && file.exists()) {
                         val output = client.getOutputStream()
@@ -77,6 +104,7 @@ object LocalReplayServer {
                                 "Content-Type: video/mp4\r\n" +
                                 "Content-Length: ${file.length()}\r\n" +
                                 "Accept-Ranges: bytes\r\n" +
+                                "Access-Control-Allow-Origin: *\r\n" +
                                 "Connection: close\r\n\r\n"
                         
                         output.write(header.toByteArray())
@@ -112,7 +140,7 @@ object LocalReplayServer {
         return "http://$ip:$PORT/replay"
     }
 
-    private fun getLocalIpAddress(): String? {
+    fun getLocalIpAddress(): String? {
         try {
             val en = java.net.NetworkInterface.getNetworkInterfaces()
             while (en.hasMoreElements()) {

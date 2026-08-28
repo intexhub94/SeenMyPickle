@@ -13,6 +13,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -98,6 +99,7 @@ fun DashboardScreen(
     var showPasscodeDialog by remember { mutableStateOf(false) }
     var showShutdownDialog by remember { mutableStateOf(false) }
     var showWaiverDialog by remember { mutableStateOf(false) }
+    var showPairingInfoDialog by remember { mutableStateOf(false) }
     
     val context = LocalContext.current
     var currentRotation by remember { mutableIntStateOf(0) }
@@ -251,7 +253,10 @@ fun DashboardScreen(
                             ),
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 2.dp)
+                            modifier = Modifier
+                                .padding(top = 2.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable { showPairingInfoDialog = true }
                         )
                     }
                 }
@@ -615,6 +620,39 @@ fun DashboardScreen(
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("I AGREE") }
+                }
+            )
+        }
+
+        if (showPairingInfoDialog) {
+            AlertDialog(
+                onDismissRequest = { showPairingInfoDialog = false },
+                title = { Text("TV Pairing & Cloud Sync Info") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("TV PAIRING ID", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+                        Text(uiState.deviceId, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        
+                        HorizontalDivider()
+                        
+                        Text("CLOUD SYNC STATUS", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+                        Text(uiState.cloudSyncStatus, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = if (uiState.cloudSyncStatus == "SUCCESS") Color(0xFF99FF00) else Color.Red)
+                        
+                        if (uiState.cloudSyncError.isNotBlank()) {
+                            Text("Error: ${uiState.cloudSyncError}", color = Color.Red, style = MaterialTheme.typography.bodySmall)
+                        }
+
+                        HorizontalDivider()
+
+                        val localIp = com.pbcam.app.service.LocalReplayServer.getLocalIpAddress() ?: "Disconnected"
+                        Text("LOCAL IP (COURT WI-FI)", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+                        Text(localIp, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showPairingInfoDialog = false }) {
+                        Text("CLOSE")
+                    }
                 }
             )
         }

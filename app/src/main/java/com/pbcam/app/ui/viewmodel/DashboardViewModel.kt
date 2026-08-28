@@ -154,6 +154,7 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
         refreshSettings()
         observeSessions()
         observeUploads()
+        startLocalStatusServer()
         
         startLicenseListener() // Immediate start for licensing
 
@@ -295,26 +296,27 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     private fun syncLiveStatusToCloud() {
-        val deviceId = _uiState.value.deviceId
-        if (deviceId == "") return
+        val deviceId = _uiState.value.deviceId.ifBlank { SecurityUtils.getDeviceId(app) }
+        if (deviceId.isBlank()) return
 
-        _uiState.update { it.copy(cloudSyncStatus = "SYNCING") }
+        _uiState.update { it.copy(cloudSyncStatus = "SYNCING", deviceId = deviceId) }
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 // FORCE REGIONAL URL for Phone Sync
                 val db = FirebaseDatabase.getInstance(DB_URL).getReference("live_status/$deviceId")
                 
-                val statusMap = HashMap<String, Any?>()
+                val statusMap = HashMap<String, Any>()
                 statusMap["status"] = _uiState.value.recordingState.name
-                statusMap["rtspUrl"] = _uiState.value.rtspUrl
-                statusMap["rtspSubUrl"] = _uiState.value.rtspSubUrl
+                statusMap["rtspUrl"] = _uiState.value.rtspUrl.orEmpty()
+                statusMap["rtspSubUrl"] = _uiState.value.rtspSubUrl.orEmpty()
                 statusMap["duration"] = _recordingDurationSeconds.value
                 statusMap["players"] = _uiState.value.selectedEmails
                 statusMap["timestamp"] = System.currentTimeMillis()
-                statusMap["courtTag"] = _uiState.value.courtTag
+                statusMap["courtTag"] = _uiState.value.courtTag.ifBlank { "Court 1" }
                 statusMap["lastReplaySessionId"] = _uiState.value.lastReplaySessionId
                 statusMap["isOnline"] = true // Redundant safety: ensure online during any sync
+                statusMap["localIp"] = com.pbcam.app.service.LocalReplayServer.getLocalIpAddress().orEmpty()
                 
                 // Add local URL if server is running
                 val localUrl = com.pbcam.app.service.LocalReplayServer.getLocalUrl(app)
@@ -347,30 +349,32 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
     private var presenceListener: ValueEventListener? = null
 
     private fun startPresenceHeartbeat(deviceId: String) {
-        if (deviceId == "") return
+        val targetId = deviceId.ifBlank { SecurityUtils.getDeviceId(app) }
+        if (targetId.isBlank()) return
         presenceHeartbeatJob?.cancel()
         presenceHeartbeatJob = viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
                 try {
-                    val db = FirebaseDatabase.getInstance(DB_URL).getReference("live_status/$deviceId")
+                    val db = FirebaseDatabase.getInstance(DB_URL).getReference("live_status/$targetId")
                     // Force Online Status
                     db.child("isOnline").setValue(true)
                     
                     // Force Data Sync
                     syncLiveStatusToCloud()
                     
-                    android.util.Log.d("PresenceAudit", "Heartbeat sent for $deviceId")
+                    android.util.Log.d("PresenceAudit", "Heartbeat sent for $targetId")
                 } catch (e: Exception) {
                     android.util.Log.e("PresenceAudit", "Heartbeat failed: ${e.message}")
                 }
-                delay(5.seconds) // 5 seconds stable heartbeat
+                delay(3.seconds) // 3 seconds stable heartbeat
             }
         }
     }
 
     private fun startPresenceListener(deviceId: String) {
-        if (deviceId == "") return
-        val db = FirebaseDatabase.getInstance(DB_URL).getReference("live_status/$deviceId")
+        val targetId = deviceId.ifBlank { SecurityUtils.getDeviceId(app) }
+        if (targetId.isBlank()) return
+        val db = FirebaseDatabase.getInstance(DB_URL).getReference("live_status/$targetId")
         val presenceRef = FirebaseDatabase.getInstance(DB_URL).getReference(".info/connected")
         
         presenceListener?.let { presenceRef.removeEventListener(it) }
@@ -392,6 +396,20 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
             }
         }
         presenceRef.addValueEventListener(presenceListener!!)
+    }
+
+    private fun startLocalStatusServer() {
+        com.pbcam.app.service.LocalReplayServer.startServer {
+            org.json.JSONObject().apply {
+                put("isOnline", true)
+                put("status", _uiState.value.recordingState.name)
+                put("rtspUrl", _uiState.value.rtspUrl)
+                put("rtspSubUrl", _uiState.value.rtspSubUrl)
+                put("courtTag", _uiState.value.courtTag)
+                put("deviceId", _uiState.value.deviceId.ifBlank { SecurityUtils.getDeviceId(app) })
+                put("timestamp", System.currentTimeMillis())
+            }.toString()
+        }
     }
 
     private fun registerNetworkCallback() {

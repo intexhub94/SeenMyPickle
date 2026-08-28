@@ -42,7 +42,10 @@ data class TvUiState(
     val lastUpdateTimestamp: Long = 0,
     val isReplayLoading: Boolean = false,
     val showReplayCompletePrompt: Boolean = false,
-    val replayPromptCountdown: Int = 20
+    val replayPromptCountdown: Int = 20,
+    val isInitialSyncPending: Boolean = true,
+    val localIp: String = "",
+    val syncChannel: String = "Cloud"
 )
 
 class TvDashboardViewModel(application: Application) : AndroidViewModel(application) {
@@ -53,15 +56,21 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
     val uiState: StateFlow<TvUiState> = _uiState.asStateFlow()
 
     private var statusListener: ValueEventListener? = null
+    private var currentObservedDeviceId: String? = null
     private var retryJob: Job? = null
     private var watchdogJob: Job? = null
 
     init {
         checkFirebaseConnection()
         
-        // --- STARTUP SPLASH DELAY ---
+        // --- STARTUP SPLASH DELAY & INITIAL SYNC WAIT ---
         viewModelScope.launch {
-            delay(2000)
+            delay(1500)
+            var waitCount = 0
+            while (_uiState.value.isPaired && _uiState.value.isInitialSyncPending && _uiState.value.firebaseConnected && waitCount < 10) {
+                delay(200)
+                waitCount++
+            }
             _uiState.update { it.copy(isSplashScreenActive = false) }
         }
 
@@ -105,6 +114,7 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
         prefs?.edit()?.putString("paired_device_id", formattedId)?.apply()
         startObservingStatus(formattedId)
         startWatchdog()
+        startLocalLanProber()
     }
 
     fun unpairDevice() {
@@ -169,11 +179,15 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun startObservingStatus(deviceId: String) {
-        if (deviceId == "") return
+        val cleanId = deviceId.trim().uppercase()
+        if (cleanId.isBlank()) return
         
-        statusListener?.let { 
-            getDb().getReference("live_status/${_uiState.value.pairedDeviceId}").removeEventListener(it)
+        statusListener?.let { listener ->
+            currentObservedDeviceId?.let { oldId ->
+                getDb().getReference("live_status/$oldId").removeEventListener(listener)
+            }
         }
+        currentObservedDeviceId = cleanId
 
         statusListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -187,12 +201,12 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
                     val duration = snapshot.child("duration").getValue(Long::class.java) ?: 0L
                     val players = snapshot.child("players").children.mapNotNull { it.getValue(String::class.java) }
                     val courtTag = snapshot.child("courtTag").getValue(String::class.java) ?: ""
-                    val rawIsOnline = snapshot.child("isOnline").getValue(Boolean::class.java) ?: false
-                    val remoteTimestamp = snapshot.child("timestamp").getValue(Long::class.java) ?: 0L
-                    val timestampAge = if (remoteTimestamp > 0L) (localReceiveTime - remoteTimestamp) else 999999L
+                    val localIp = snapshot.child("localIp").getValue(String::class.java) ?: ""
+                    
+                    val rawIsOnline = snapshot.child("isOnline").getValue(Boolean::class.java)
+                    val hasDataNode = snapshot.hasChild("status") || snapshot.hasChild("rtspUrl") || snapshot.hasChild("courtTag")
+                    val isOnline = rawIsOnline ?: hasDataNode
 
-                    // Tablet is ONLY considered online if explicitly isOnline=true AND heartbeat timestamp is fresh (<15s)
-                    val isOnline = rawIsOnline && (timestampAge in 0..15000L)
                     val remoteReplayId: Long = snapshot.child("lastReplaySessionId").getValue(Long::class.java) ?: -1L
                     val lastSyncTime = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(localReceiveTime))
 
@@ -218,11 +232,14 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
                             duration = duration,
                             players = players,
                             courtTag = courtTag,
+                            localIp = localIp,
                             isTabletOnline = isOnline,
                             lastReplaySessionId = remoteReplayId,
                             isAutoReplayActive = if (status == "RECORDING") false else if (shouldTriggerReplay) true else it.isAutoReplayActive,
                             showReplayCompletePrompt = if (status == "RECORDING") false else it.showReplayCompletePrompt,
                             lastUpdateTimestamp = localReceiveTime,
+                            isInitialSyncPending = false,
+                            syncChannel = "Cloud",
                             debugInfo = "Sync OK: $lastSyncTime"
                         )
                     }
@@ -230,33 +247,49 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
                     if (isOnline) {
                         retryJob?.cancel()
                         _uiState.update { it.copy(retryCountdown = 10) }
-                    } else {
-                        startRetryCountdown()
                     }
                 } else {
-                    updateDebug("Node Missing: $deviceId (Check Pairing ID)")
-                    _uiState.update { it.copy(isTabletOnline = false) }
-                    startRetryCountdown()
+                    updateDebug("Node Missing: $cleanId (Check Pairing ID)")
+                    _uiState.update { it.copy(isTabletOnline = false, isInitialSyncPending = false) }
                 }
             }
 
             override fun onCancelled(error: DatabaseError) {
                 updateDebug("Cancelled: ${error.message}")
+                _uiState.update { it.copy(isInitialSyncPending = false) }
             }
         }
 
-        getDb().getReference("live_status/$deviceId").addValueEventListener(statusListener!!)
+        getDb().getReference("live_status/$cleanId").addValueEventListener(statusListener!!)
     }
 
-    private fun startRetryCountdown() {
-        if (retryJob?.isActive == true) return
-        retryJob = viewModelScope.launch {
-            while (_uiState.value.retryCountdown > 0 && !_uiState.value.isTabletOnline) {
-                delay(1000)
-                _uiState.update { it.copy(retryCountdown = it.retryCountdown - 1) }
-            }
-            if (!_uiState.value.isTabletOnline) {
-                triggerRetry()
+    private var lanProbeJob: Job? = null
+
+    private fun startLocalLanProber() {
+        lanProbeJob?.cancel()
+        lanProbeJob = viewModelScope.launch {
+            while (true) {
+                delay(3000)
+                val targetIp = _uiState.value.localIp
+                if (targetIp.isNotBlank()) {
+                    val status = com.pbcam.tv.network.TvNetworkManager.probeLocalTablet(targetIp)
+                    if (status != null && status.isOnline) {
+                        val receiveTime = System.currentTimeMillis()
+                        val lastSyncTime = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(receiveTime))
+                        _uiState.update {
+                            it.copy(
+                                status = status.status,
+                                rtspUrl = status.rtspUrl.ifBlank { it.rtspUrl },
+                                rtspSubUrl = status.rtspSubUrl.ifBlank { it.rtspSubUrl },
+                                courtTag = status.courtTag.ifBlank { it.courtTag },
+                                isTabletOnline = true,
+                                lastUpdateTimestamp = receiveTime,
+                                syncChannel = "Local LAN ($targetIp)",
+                                debugInfo = "LAN Sync OK: $lastSyncTime"
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -273,7 +306,6 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
                         if (_uiState.value.isTabletOnline) {
                             android.util.Log.w("TvWatchdog", "Tablet heartbeat stale ($staleTime ms). Forcing offline.")
                             _uiState.update { it.copy(isTabletOnline = false) }
-                            startRetryCountdown()
                         }
                     }
                 }
@@ -288,5 +320,6 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
         }
         retryJob?.cancel()
         watchdogJob?.cancel()
+        lanProbeJob?.cancel()
     }
 }
