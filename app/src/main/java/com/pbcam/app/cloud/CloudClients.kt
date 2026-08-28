@@ -389,11 +389,17 @@ object DriveUploader {
     }
 }
 
+data class EmailSendResult(
+    val success: Boolean,
+    val error: String? = null,
+    val isPermanent: Boolean = false
+)
+
 object GmailNotifier {
     private const val LOGO_CID = "seemy_pickle_logo"
     private const val BOUNDARY = "----=_Part_SeeMyPickle_Boundary"
 
-    fun send(context: Context, accessToken: String, to: String, subject: String, body: String): Boolean {
+    fun send(context: Context, accessToken: String, to: String, subject: String, body: String): EmailSendResult {
         // Load logo from resources - Use direct ID for better stability
         val logoBase64 = try {
             val logoResId = com.pbcam.app.R.raw.app_logo_email
@@ -452,14 +458,17 @@ object GmailNotifier {
         return try {
             connection.outputStream.use { it.write(payload.toByteArray()) }
             val isSuccess = connection.responseCode in 200..299
-            if (!isSuccess) {
-                val errorStream = connection.errorStream?.bufferedReader()?.readText()
-                android.util.Log.e("GmailNotifier", "API Error: ${connection.responseCode} - $errorStream")
+            if (isSuccess) {
+                EmailSendResult(success = true)
+            } else {
+                val errorStream = connection.errorStream?.bufferedReader()?.readText() ?: "Unknown Gmail API error"
+                android.util.Log.e("GmailNotifier", "API Error for recipient $to: ${connection.responseCode} - $errorStream")
+                val isPermanent = connection.responseCode in 400..499
+                EmailSendResult(success = false, error = "Gmail API ${connection.responseCode}: $errorStream", isPermanent = isPermanent)
             }
-            isSuccess
         } catch (e: Exception) {
-            android.util.Log.e("GmailNotifier", "Failed to send email", e)
-            false
+            android.util.Log.e("GmailNotifier", "Failed to send email to $to", e)
+            EmailSendResult(success = false, error = e.message ?: "Connection error", isPermanent = false)
         } finally {
             connection.disconnect()
         }

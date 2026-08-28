@@ -57,7 +57,7 @@
       </SelectionState>
       <SelectionState runConfigName="tv">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-08-27T22:08:00.056195343Z">
+        <DropdownSelection timestamp="2026-08-28T00:22:23.070114863Z">
           <Target type="DEFAULT_BOOT">
             <handle>
               <DeviceId pluginId="LocalEmulator" identifier="path=/home/intexhub/.android/avd/Medium_Tablet.avd" />

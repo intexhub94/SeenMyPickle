@@ -139,24 +139,43 @@ class UploadWorker(
                 val emailList = alertEmail.split(",").map { it.trim() }.filter { it.isNotBlank() }
                 android.util.Log.d("UploadWorker", "Attempting email delivery to ${emailList.size} recipients: $alertEmail")
                 
-                var allSuccess = true
+                var successCount = 0
+                var permanentErrorCount = 0
+                var lastError: String? = null
+
                 for (recipient in emailList) {
                     try {
-                        if (!GmailNotifier.send(applicationContext, emailToken, recipient, "SeenMyPickle Alert: New Footage for $sessionTag", finalBody)) {
-                            allSuccess = false
+                        val sendResult = GmailNotifier.send(applicationContext, emailToken, recipient, "SeenMyPickle Alert: New Footage for $sessionTag", finalBody)
+                        if (sendResult.success) {
+                            successCount++
+                        } else {
+                            lastError = sendResult.error
+                            if (sendResult.isPermanent) {
+                                permanentErrorCount++
+                                android.util.Log.w("UploadWorker", "Permanent email error for recipient '$recipient': ${sendResult.error}")
+                            }
                         }
                     } catch (e: Exception) {
                         android.util.Log.e("UploadWorker", "Email system error for $recipient: ${e.message}")
-                        allSuccess = false
+                        lastError = e.message
                     }
                 }
 
-                if (allSuccess) {
-                    repository.updateSession(session.copy(notificationStatus = "READY_SENT", gDriveUrl = shareUrl, status = RecordingStatus.COMPLETED))
+                if (successCount > 0 || permanentErrorCount == emailList.size) {
+                    val statusMsg = if (successCount == emailList.size) "READY_SENT" else "READY_EMAIL_FAILED"
+                    repository.updateSession(session.copy(
+                        notificationStatus = statusMsg,
+                        gDriveUrl = shareUrl,
+                        status = RecordingStatus.COMPLETED
+                    ))
                     repository.markCompleted(sessionId, shareUrl)
                     updateCloudStatusWithReplay(session.filename, shareUrl)
+                    
+                    if (successCount < emailList.size) {
+                        android.util.Log.w("UploadWorker", "Completed session $sessionId with email issues ($successCount/${emailList.size} sent): $lastError")
+                    }
                 } else {
-                    val retryMsg = "Email failure (Retrying...)"
+                    val retryMsg = "Email network error (Retrying...)"
                     repository.updateProgress(sessionId, 0.90f, retryMsg)
                     return Result.retry()
                 }

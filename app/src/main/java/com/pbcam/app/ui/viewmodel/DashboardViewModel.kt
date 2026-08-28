@@ -363,7 +363,7 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                 } catch (e: Exception) {
                     android.util.Log.e("PresenceAudit", "Heartbeat failed: ${e.message}")
                 }
-                delay(10.seconds) // 10 seconds
+                delay(5.seconds) // 5 seconds stable heartbeat
             }
         }
     }
@@ -408,8 +408,13 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         super.onCleared()
         try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (_: Exception) {}
+        val deviceId = SecurityUtils.getDeviceId(app)
+        if (deviceId.isNotBlank()) {
+            try {
+                FirebaseDatabase.getInstance(DB_URL).getReference("live_status/$deviceId/isOnline").setValue(false)
+            } catch (_: Exception) {}
+        }
         licenseListener?.let { 
-            val deviceId = SecurityUtils.getDeviceId(app)
             FirebaseDatabase.getInstance(DB_URL).getReference("licenses/$deviceId").removeEventListener(it)
         }
         presenceListener?.let { 
@@ -811,12 +816,19 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun updateAlertEmail(email: String) {
-        settings.alertEmail = email
+        val trimmed = email.trim()
+        val isValid = Patterns.EMAIL_ADDRESS.matcher(trimmed).matches()
         _uiState.update { 
             it.copy(
                 alertEmail = email,
-                isEmailValid = Patterns.EMAIL_ADDRESS.matcher(email).matches()
+                isEmailValid = isValid
             ) 
+        }
+        
+        emailDebounceJob?.cancel()
+        emailDebounceJob = viewModelScope.launch {
+            delay(300.milliseconds)
+            settings.alertEmail = trimmed
         }
     }
 

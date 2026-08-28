@@ -34,7 +34,8 @@ class ResendWorker(
         val finalBody = GmailNotifier.buildReadyBody(sessionTag, dateStr, shareUrl)
 
         return try {
-            if (GmailNotifier.send(applicationContext, accessToken, alertEmail, "RE-SEND: SeenMyPickle Alert for $sessionTag", finalBody)) {
+            val result = GmailNotifier.send(applicationContext, accessToken, alertEmail, "RE-SEND: SeenMyPickle Alert for $sessionTag", finalBody)
+            if (result.success) {
                 repository.updateSession(session.copy(notificationStatus = "READY_SENT"))
                 Result.success()
             } else {

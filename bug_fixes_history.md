@@ -5,6 +5,20 @@ Strictly follows the rules in `ai_workflow_rules.md`.
 
 ---
 
+## 2026-08-28: Email Input Validation & Invalid Recipient Fault Tolerance
+- **User Observation**: If a user entered an invalid or mistyped email address, the upload worker would get stuck retrying email delivery endlessly even after the video successfully uploaded to Google Drive.
+- **Technical Root Cause**:
+    1. **Infinite Worker Retry on Invalid Email**: `GmailNotifier.send` returned a simple `Boolean`. When Gmail API rejected an invalid address (HTTP 400 Bad Request), `UploadWorker` treated all false returns as transient network failures and called `Result.retry()`.
+    2. **Un-debounced UI State**: `updateAlertEmail` written to `SettingsStore` on every single keystroke.
+- **Technical Resolution**: 
+    1. **Permanent Error Classification**: Updated `GmailNotifier.send` to return `EmailSendResult` and classify 4xx HTTP responses (invalid recipient) as permanent errors.
+    2. **Footage Preservation**: Updated `UploadWorker.kt` so that if Drive upload succeeds but recipient email fails permanently, the session completes as `COMPLETED` (`READY_EMAIL_FAILED`) with the Google Drive link saved to Room DB and Firebase, preventing endless retry loops while protecting match footage.
+    3. **Debounced Settings Writes & Visual Feedback**: Integrated `emailDebounceJob` (300ms delay) in `DashboardViewModel` and added `supportingText` error hints (`"Please enter a valid email address"`) to `DashboardScreen`.
+- **Impact on Golden Build**: Eliminates worker loops on mistyped emails, provides real-time UI validation feedback, and guarantees match footage is saved to Google Drive regardless of recipient email errors.
+- **Context Sufficiency**: Yes.
+
+---
+
 ## 2026-08-28: Google Cloud Project Migration Upload Pipeline Failure Fix
 - **User Observation**: Upload pipeline was consistently failing and getting stuck after changing SHA-1 and migrating to the new `seemypickle` Firebase/Google Cloud project (`940501213286`).
 - **Technical Root Cause**:

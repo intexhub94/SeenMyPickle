@@ -92,10 +92,18 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
         })
     }
 
-    fun pairDevice(deviceId: String) {
-        _uiState.update { it.copy(pairedDeviceId = deviceId, isPaired = true) }
-        prefs?.edit()?.putString("paired_device_id", deviceId)?.apply()
-        startObservingStatus(deviceId)
+    fun pairDevice(rawDeviceId: String) {
+        val clean = rawDeviceId.trim().uppercase().replace(" ", "")
+        val formattedId = if (clean.length == 8 && !clean.contains("-")) {
+            clean.take(4) + "-" + clean.drop(4)
+        } else {
+            clean
+        }
+        if (formattedId.isBlank()) return
+
+        _uiState.update { it.copy(pairedDeviceId = formattedId, isPaired = true) }
+        prefs?.edit()?.putString("paired_device_id", formattedId)?.apply()
+        startObservingStatus(formattedId)
         startWatchdog()
     }
 
@@ -169,6 +177,7 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
 
         statusListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
+                val localReceiveTime = System.currentTimeMillis()
                 if (snapshot.exists()) {
                     val status = snapshot.child("status").getValue(String::class.java) ?: "IDLE"
                     val rtspUrl = snapshot.child("rtspUrl").getValue(String::class.java) ?: ""
@@ -180,8 +189,7 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
                     val courtTag = snapshot.child("courtTag").getValue(String::class.java) ?: ""
                     val isOnline = snapshot.child("isOnline").getValue(Boolean::class.java) ?: false
                     val remoteReplayId: Long = snapshot.child("lastReplaySessionId").getValue(Long::class.java) ?: -1L
-                    val timestamp = snapshot.child("timestamp").getValue(Long::class.java) ?: 0L
-                    val lastSyncTime = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
+                    val lastSyncTime = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(localReceiveTime))
 
                     val shouldTriggerReplay = remoteReplayId > 0L && remoteReplayId != _uiState.value.lastReplaySessionId && status == "IDLE"
 
@@ -209,7 +217,7 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
                             lastReplaySessionId = remoteReplayId,
                             isAutoReplayActive = if (status == "RECORDING") false else if (shouldTriggerReplay) true else it.isAutoReplayActive,
                             showReplayCompletePrompt = if (status == "RECORDING") false else it.showReplayCompletePrompt,
-                            lastUpdateTimestamp = timestamp,
+                            lastUpdateTimestamp = localReceiveTime,
                             debugInfo = "Sync OK: $lastSyncTime"
                         )
                     }
@@ -256,7 +264,7 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
                 val lastUpdate = _uiState.value.lastUpdateTimestamp
                 if (lastUpdate > 0L) {
                     val staleTime = System.currentTimeMillis() - lastUpdate
-                    if (staleTime > 30000) { // 30 second timeout
+                    if (staleTime > 25000) { // 25 second stable threshold
                         if (_uiState.value.isTabletOnline) {
                             android.util.Log.w("TvWatchdog", "Tablet heartbeat stale ($staleTime ms). Forcing offline.")
                             _uiState.update { it.copy(isTabletOnline = false) }

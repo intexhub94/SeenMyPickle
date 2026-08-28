@@ -60,6 +60,9 @@ Key highlights include:
 
 ### 3.2 UI Performance & State Management
 - **Local Input Buffering**: High-frequency text inputs (like the Player Email field) **must** use local `mutableStateOf` buffering within the Composable. Decouple physical typing from ViewModel/Database writes to ensure zero-latency keyboard response on mid-range hardware.
+- **Email Input Debouncing & Validation**:
+    - High-frequency text typing in the Email field MUST use debouncing (`emailDebounceJob` with a 300ms delay) before writing to persistent settings to prevent I/O stutter.
+    - Real-time syntax validation (`Patterns.EMAIL_ADDRESS`) MUST drive UI states (`isEmailValid`), rendering a clear `supportingText` error message (`"Please enter a valid email address"`) when invalid syntax is detected.
 - **Input Field Styling**: The primary email identification field MUST use an `OutlinedTextField` with a **transparent background** (`focusedContainerColor = Color.Transparent`) to maintain card aesthetic continuity.
 - **Input Persistence**: Critical ephemeral UI states (specifically the **Player Email** field) MUST use `rememberSaveable` to ensure data persists during device rotation and configuration changes.
 - **Resource Hardening**: 
@@ -241,6 +244,9 @@ Key highlights include:
     - **Branded structure**: All emails must use `multipart/related` MIME to embed the official logo via CID.
     - **Single Notification Flow**: Deliver only one high-impact "Footage Ready" email once the upload is complete. Avoid intermediate processing alerts to reduce user inbox clutter.
     - **Retention Notice**: Every email MUST include the disclaimer: *"⚠️ Footage is stored for 5 days from the recording date and will be permanently deleted thereafter."*
+    - **Email Delivery Fault Tolerance**:
+        - **Permanent Error Isolation**: `GmailNotifier.send` MUST classify HTTP 4xx API errors (e.g. 400 Bad Request / invalid recipient address) as permanent errors (`EmailSendResult.isPermanent = true`).
+        - **Footage Protection**: If Google Drive upload succeeds but email delivery fails due to an invalid recipient address, `UploadWorker` MUST NOT loop endlessly in retries. It MUST complete the session (`COMPLETED`, `READY_EMAIL_FAILED`), save the Google Drive link to Room DB and Firebase, and preserve the match footage for replay.
 
 ### 3.6 Cloud & Network
 - **Google Auth Synchronization**: To prevent "Code 10" developer errors, the project MUST maintain absolute alignment between:

@@ -1050,6 +1050,12 @@ fun RecordingControlCard(uiState: DashboardUiState, viewModel: DashboardViewMode
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         enabled = uiState.selectedEmails.size < 5,
+                        isError = uiState.alertEmail.isNotBlank() && !uiState.isEmailValid,
+                        supportingText = {
+                            if (uiState.alertEmail.isNotBlank() && !uiState.isEmailValid) {
+                                Text("Please enter a valid email address", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                            }
+                        },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
                             unfocusedContainerColor = Color.Transparent,
