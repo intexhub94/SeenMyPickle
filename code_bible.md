@@ -236,7 +236,8 @@ Key highlights include:
     - **Concat Hardening**: Combining parts MUST use `-fflags +igndts+genpts` and `-avoid_negative_ts make_zero` to eliminate visual stutter and timestamp drifts.
 - **Data Integrity & Success Logic**:
     - **Atomic Cleanup**: Source files (`.ts` parts) must **only** be deleted after a verified successful cloud upload. If a processing failure is detected (e.g., output < 1MB), the segments MUST be preserved in internal storage for manual recovery.
-    - **Retention Sync**: Local session logs and Google Drive footage MUST be automatically purged based on the administrator's configured `retentionDays` setting (Default 5 days). This logic is triggered daily via `MaintenanceWorker` and instantly upon every application cold launch in `DashboardViewModel`.
+    - **Retention Sync**: Local MP4 video files, session logs, and Google Drive footage MUST be automatically purged based on the administrator's configured `retentionDays` setting (Default 5 days). This logic is triggered daily via `MaintenanceWorker` and upon application cold launch in `DashboardViewModel`.
+    - **TV Replay List Window**: To maintain court relevance on public displays, the status broadcast (`recent_sessions` and `localReplayUrl`) sent to the TV app MUST be filtered to only include recordings captured within the last **2 hours**. This decouples TV display filtering from local disk file deletion.
     - **Rescue Mode**: If hardware-accelerated watermarking produces black frames or fails, the worker must automatically fallback to raw stream delivery using `-c copy -movflags +faststart`.
 - **Local Replay Server**:
     - **Socket Resilience**: The server MUST enable `reuseAddress = true` to prevent `EADDRINUSE` errors during match transitions or app restarts.
@@ -275,6 +276,7 @@ Key highlights include:
 - **Maintenance**: Include a manual "Storage Cleanup" trigger and per-session deletion icons (Trash icon) in the History list. Deleting a session must trigger automatic physical file removal.
 - **TV Supplementary Experience (PickleView TV)**:
     - **Architecture**: A silent "Listener" module (`:tv`) with App ID `com.pbcam.tv`.
+    - **Dual Category Launchers**: MUST declare both `android.intent.category.LAUNCHER` and `android.intent.category.LEANBACK_LAUNCHER` intent filters in `tv/src/main/AndroidManifest.xml` to guarantee app icon visibility across standard phone/tablet emulators as well as dedicated Android TV OS devices.
     - **Hybrid Connection Engine**: MUST combine **Local LAN HTTP Probing** (`http://{tabletIp}:8080/status`) every 3 seconds for sub-10ms court Wi-Fi synchronization with single-instance **Firebase Realtime Database** event listeners for cloud fallback.
     - **Single-Clock Staleness Tracking**: Watchdog evaluations MUST evaluate staleness using ONLY local TV receive timestamps (`System.currentTimeMillis() - lastLocalReceiveTime`) to avoid inter-device clock skew false alarms.
     - **Single-Instance Listener Lifecycle**: MUST maintain exactly one active Firebase event listener per paired device ID without periodic re-subscription loops.

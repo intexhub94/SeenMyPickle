@@ -161,7 +161,7 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             delay(500.milliseconds)
             failStuckSessions()
-            purgeLocalVideoFilesOlderThan(settings.localStorageRetentionHours)
+            purgeLocalVideoFilesOlderThan(settings.retentionDays)
             val deviceId = SecurityUtils.getDeviceId(app)
             startPresenceListener(deviceId)
             startPresenceHeartbeat(deviceId) // START PERIODIC HEARTBEAT
@@ -320,9 +320,13 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                 val localIp = com.pbcam.app.service.LocalReplayServer.getLocalIpAddress().orEmpty()
                 statusMap["localIp"] = localIp
                 
-                // Broadcast recent 10 sessions for TV Replay List
+                // Broadcast recent sessions (recorded within last 2 hours) for TV Replay List
+                val tvCutoff = System.currentTimeMillis() - java.util.concurrent.TimeUnit.HOURS.toMillis(2)
                 val recentList = _uiState.value.sessions
-                    .filter { s -> s.status == RecordingStatus.COMPLETED || s.status == RecordingStatus.SENDING_EMAIL || s.status == RecordingStatus.UPLOADING }
+                    .filter { s -> 
+                        (s.status == RecordingStatus.COMPLETED || s.status == RecordingStatus.SENDING_EMAIL || s.status == RecordingStatus.UPLOADING) &&
+                        s.startTime >= tvCutoff
+                    }
                     .take(10)
                     .map { s ->
                         val localFileExists = File(s.filename).exists()
@@ -340,9 +344,11 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                     }
                 statusMap["recent_sessions"] = recentList
                 
-                // Add local URL if server is running
+                // Add local URL if server is running and latest completed session was within 2 hours
                 val localUrl = com.pbcam.app.service.LocalReplayServer.getLocalUrl(app)
-                if (localUrl != null && (_uiState.value.recordingState == RecordingState.IDLE || _uiState.value.recordingState == RecordingState.PAUSED)) {
+                val latestCompleted = _uiState.value.sessions.firstOrNull { it.status == RecordingStatus.COMPLETED }
+                val isRecentForTv = latestCompleted != null && (System.currentTimeMillis() - latestCompleted.startTime) < java.util.concurrent.TimeUnit.HOURS.toMillis(2)
+                if (localUrl != null && isRecentForTv && (_uiState.value.recordingState == RecordingState.IDLE || _uiState.value.recordingState == RecordingState.PAUSED)) {
                     statusMap["localReplayUrl"] = localUrl
                 } else {
                     statusMap["localReplayUrl"] = ""
@@ -977,16 +983,16 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
         _uiState.update { it.copy(isAdminAuthorized = false, adminSessionSecondsLeft = 0) }
     }
 
-    fun purgeLocalVideoFilesOlderThan(hours: Int = 2) {
+    fun purgeLocalVideoFilesOlderThan(days: Int = settings.retentionDays) {
         viewModelScope.launch(Dispatchers.IO) {
-            val localCutoff = System.currentTimeMillis() - java.util.concurrent.TimeUnit.HOURS.toMillis(hours.toLong())
+            val localCutoff = System.currentTimeMillis() - java.util.concurrent.TimeUnit.DAYS.toMillis(days.toLong())
             val recordingsDir = com.pbcam.app.service.RecordingService.getRecordingsDir(app)
             if (recordingsDir.exists()) {
                 recordingsDir.listFiles()?.forEach { file ->
                     if (file.isFile && (file.name.endsWith(".mp4") || file.name.endsWith(".ts"))) {
                         val session = repository.getSessionByFilename(file.absolutePath)
                         val isUploaded = session?.status == RecordingStatus.COMPLETED
-                        val isOldLocal = file.lastModified() < localCutoff || (session != null && (System.currentTimeMillis() - session.startTime) > java.util.concurrent.TimeUnit.HOURS.toMillis(hours.toLong()))
+                        val isOldLocal = file.lastModified() < localCutoff || (session != null && (System.currentTimeMillis() - session.startTime) > java.util.concurrent.TimeUnit.DAYS.toMillis(days.toLong()))
                         
                         if (isOldLocal && (isUploaded || session == null)) {
                             file.delete()

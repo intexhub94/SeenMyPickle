@@ -23,9 +23,7 @@ class MaintenanceWorker(
         // 1. Purge Old Session Logs (Sync with Drive retention)
         repository.purgeOldSessions(retentionDays)
 
-        // 2. Clean local video files (2-Hour Retention Policy for court rentals)
-        val localStorageRetentionHours = app.settingsStore.localStorageRetentionHours
-        val localCutoff = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(localStorageRetentionHours.toLong())
+        // 2. Clean local video files (Synced with Retention Days policy)
         val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(retentionDays.toLong())
         val safetyCutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(14)
 
@@ -37,10 +35,10 @@ class MaintenanceWorker(
                     val isExtraOld = file.lastModified() < safetyCutoff
                     val session = repository.getSessionByFilename(file.absolutePath)
                     val isUploaded = session?.status == RecordingStatus.COMPLETED
-                    val isOldLocal = file.lastModified() < localCutoff || (session != null && (System.currentTimeMillis() - session.startTime) > TimeUnit.HOURS.toMillis(localStorageRetentionHours.toLong()))
+                    val isSessionExpired = session != null && (System.currentTimeMillis() - session.startTime) > TimeUnit.DAYS.toMillis(retentionDays.toLong())
 
-                    // Logic: Delete if older than 2 hours and uploaded, OR if extra old (safety net)
-                    if (isExtraOld || (isOldLocal && isUploaded) || (isOld && isUploaded)) {
+                    // Logic: Delete if older than retentionDays (and uploaded or orphaned), or if extra old safety net
+                    if (isExtraOld || ((isOld || isSessionExpired) && (isUploaded || session == null))) {
                         file.delete()
                     }
                 }

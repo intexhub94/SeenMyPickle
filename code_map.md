@@ -29,6 +29,7 @@ This document serves as the master logical map for the SeenMyPickle Android proj
     - **Licensing Resilience**: Implements **Local Key Primary Truth** logic. Only invalidates license if cloud explicitly revokes or expires.
     - **Optimization (Round 25)**: Implements **Timer Decoupling** and **On-Demand Frame Capture** using standalone `StateFlow` and `SharedFlow` to minimize UI recomposition overhead.
     - **Cloud Continuity**: Implements **Atomic Status Sync** via `updateChildren` and a dedicated **10s Presence Heartbeat** to ensure 100% reliable TV offline detection. All UI and URL state changes are synchronized in a single transaction to prevent TV player flickering.
+    - **Local Retention & TV Filter Decoupling**: Purges local `.mp4` video files based on full `retentionDays` (e.g. 5 days) rather than 2 hours. Filters `recent_sessions` sent to the TV app to only include recordings from the last 2 hours to keep TV display current without deleting local main app files.
     - **Google Auth Recovery**: Implements reactive `isAuthenticated` tracking within the standard `refreshSettings` cycle.
     - **Replay Handover**: Broadcasts `lastReplaySessionId` and manages the lifecycle of the `LocalReplayServer` to trigger automated TV match review.
     - **Configuration Logic**: Implements `isConfigReady` calculation (Gate for READY/CONFIG REQUIRED status). Dashboard automatically enables START MATCH if a valid camera source is selected.
@@ -63,7 +64,8 @@ This document serves as the master logical map for the SeenMyPickle Android proj
 
 ### 📺 TV Layer (Package: `com.pbcam.tv`)
 - **App ID**: `com.pbcam.tv` (Ensures unique deployment identity).
-- **`MainActivity.kt`**: Entry point optimized for Leanback; initializes the `TvDashboardScreen`.
+- **Launcher Visibility**: Declares both `LAUNCHER` and `LEANBACK_LAUNCHER` intent filters in `AndroidManifest.xml` for visibility across both standard phone/tablet emulators and TV OS devices.
+- **`MainActivity.kt`**: Entry point; initializes the `TvDashboardScreen`.
 - **`TvDashboardViewModel.kt`**: 
     - **Hybrid Sync Engine**: Combines **Local LAN HTTP Probing** (`http://{tabletIp}:8080/status`) every 3 seconds for sub-10ms court Wi-Fi synchronization with single-instance **Firebase Realtime Database** event listeners for cloud fallback.
     - **Single-Clock Watchdog**: Evaluates staleness using local TV timestamps (`System.currentTimeMillis() - lastLocalReceiveTime`) to eliminate inter-device clock skew false disconnections.
