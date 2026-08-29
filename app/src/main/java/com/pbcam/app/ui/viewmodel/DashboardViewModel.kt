@@ -333,7 +333,7 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                             "email" to SecurityUtils.maskEmail(s.targetEmail),
                             "startTime" to s.startTime,
                             "duration" to durationSec,
-                            "localUrl" to if (localFileExists && localIp.isNotBlank()) "http://$localIp:8080/replay" else "",
+                            "localUrl" to if (localFileExists && localIp.isNotBlank()) "http://$localIp:8080/replay?id=${s.id}" else "",
                             "gDriveUrl" to (s.gDriveUrl ?: ""),
                             "status" to s.status.name
                         )
@@ -421,7 +421,7 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     private fun startLocalStatusServer() {
-        com.pbcam.app.service.LocalReplayServer.startServer {
+        com.pbcam.app.service.LocalReplayServer.startServer(app) {
             org.json.JSONObject().apply {
                 put("isOnline", true)
                 put("status", _uiState.value.recordingState.name)

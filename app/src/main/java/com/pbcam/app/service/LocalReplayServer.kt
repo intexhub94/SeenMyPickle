@@ -17,14 +17,35 @@ object LocalReplayServer {
     private var currentFile: File? = null
     private var statusJsonProvider: (() -> String)? = null
     private var isRunning = false
+    private var appContext: android.content.Context? = null
 
-    fun startServer(provider: () -> String) {
+    fun startServer(context: android.content.Context, provider: () -> String) {
+        appContext = context.applicationContext
         statusJsonProvider = provider
         if (!isRunning) {
             isRunning = true
             executor = Executors.newSingleThreadExecutor()
             executor?.execute { runServer() }
         }
+    }
+
+    private fun resolveRequestedFile(requestLine: String): File? {
+        val uriPath = requestLine.split(" ").getOrNull(1) ?: return currentFile
+        if (uriPath.contains("id=")) {
+            val idStr = uriPath.substringAfter("id=").substringBefore("&")
+            val id = idStr.toLongOrNull()
+            if (id != null && appContext != null) {
+                val pbApp = appContext as? com.pbcam.app.PBCamApplication
+                val session = pbApp?.recordingRepository?.let { repo ->
+                    kotlinx.coroutines.runBlocking { repo.getSession(id) }
+                }
+                if (session != null) {
+                    val f = File(session.filename)
+                    if (f.exists() && f.length() > 0) return f
+                }
+            }
+        }
+        return currentFile
     }
 
     fun start(file: File) {
@@ -95,7 +116,7 @@ object LocalReplayServer {
                     output.flush()
                     Log.d(TAG, "Served /status JSON")
                 } else if (line.startsWith("GET /replay")) {
-                    val file = currentFile
+                    val file = resolveRequestedFile(line)
                     if (file != null && file.exists()) {
                         val output = client.getOutputStream()
                         val fis = FileInputStream(file)
@@ -118,7 +139,7 @@ object LocalReplayServer {
                         fis.close()
                         Log.d(TAG, "Served ${file.name} to ${client.inetAddress}")
                     } else {
-                        Log.e(TAG, "Replay file missing: ${file?.name ?: "null"}")
+                        Log.e(TAG, "Replay file missing for request: $line")
                         val error = "HTTP/1.1 404 Not Found\r\n\r\n"
                         client.getOutputStream().write(error.toByteArray())
                     }

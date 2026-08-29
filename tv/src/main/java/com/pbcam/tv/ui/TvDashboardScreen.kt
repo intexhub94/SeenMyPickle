@@ -685,20 +685,30 @@ fun VideoPlayerLayer(uiState: TvUiState, viewModel: TvDashboardViewModel) {
 
     // 1. Calculate the active URL based on priority
     val activeUrl = remember(uiState.status, uiState.rtspUrl, uiState.rtspSubUrl, uiState.lastRecordingUrl, uiState.localReplayUrl, uiState.isAutoReplayActive, uiState.isTabletOnline) {
-        val rawUrl = if (!uiState.isTabletOnline) ""
+        val rawUrl = if (!uiState.isTabletOnline && !uiState.isAutoReplayActive) ""
         else if (uiState.status == "RECORDING" || uiState.status == "PAUSED") {
             if (uiState.rtspSubUrl != "") uiState.rtspSubUrl else uiState.rtspUrl
         } else if (uiState.status == "IDLE") {
             if (uiState.isAutoReplayActive && uiState.localReplayUrl != "") uiState.localReplayUrl
+            else if (uiState.isAutoReplayActive && uiState.lastRecordingUrl != "") uiState.lastRecordingUrl
             else if (uiState.rtspSubUrl != "") uiState.rtspSubUrl
             else if (uiState.localReplayUrl != "") uiState.localReplayUrl
             else if (uiState.lastRecordingUrl != "") uiState.lastRecordingUrl
             else uiState.rtspUrl
         } else ""
 
-        // Sanitize: Only allow real media protocols
-        if (rawUrl.startsWith("rtsp://") || rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
+        // Convert Google Drive view URL (https://drive.google.com/file/d/XYZ/view)
+        // to direct MP4 video stream URL (https://drive.google.com/uc?export=download&id=XYZ)
+        val directUrl = if (rawUrl.contains("drive.google.com/file/d/")) {
+            val fileId = rawUrl.substringAfter("drive.google.com/file/d/").substringBefore("/")
+            "https://drive.google.com/uc?export=download&id=$fileId"
+        } else {
             rawUrl
+        }
+
+        // Sanitize: Only allow real media protocols
+        if (directUrl.startsWith("rtsp://") || directUrl.startsWith("http://") || directUrl.startsWith("https://")) {
+            directUrl
         } else {
             ""
         }
