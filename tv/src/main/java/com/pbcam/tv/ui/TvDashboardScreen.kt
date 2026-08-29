@@ -137,9 +137,25 @@ fun TvDashboardScreen(viewModel: TvDashboardViewModel = viewModel()) {
                 }
             }
 
+            var showUnpairWarning by remember { mutableStateOf(false) }
+
             // --- URGENT: TABLET OFFLINE POPUP ---
             if (!uiState.isTabletOnline) {
-                OfflineAlertOverlay(uiState, viewModel)
+                OfflineAlertOverlay(
+                    uiState = uiState, 
+                    viewModel = viewModel,
+                    onUnpairRequest = { showUnpairWarning = true }
+                )
+            }
+
+            // --- OBSCURE FEED BACKDROP FOR DIALOGS ---
+            if (uiState.isSettingsOpen || uiState.isReplayListOpen || showUnpairWarning) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.90f))
+                        .zIndex(390f)
+                )
             }
 
             // --- ADMIN PANEL DIALOG ---
@@ -147,7 +163,20 @@ fun TvDashboardScreen(viewModel: TvDashboardViewModel = viewModel()) {
                 AdminPanelDialog(
                     uiState = uiState,
                     onDismiss = { viewModel.toggleSettings(false) },
-                    onUnpair = { viewModel.unpairDevice() }
+                    onUnpair = { showUnpairWarning = true },
+                    onToggleStreamQuality = { viewModel.toggleStreamQuality() }
+                )
+            }
+
+            // --- UNPAIR WARNING CONFIRMATION DIALOG ---
+            if (showUnpairWarning) {
+                UnpairWarningDialog(
+                    onConfirmUnpair = {
+                        showUnpairWarning = false
+                        viewModel.toggleSettings(false)
+                        viewModel.unpairDevice()
+                    },
+                    onDismiss = { showUnpairWarning = false }
                 )
             }
 
@@ -349,46 +378,124 @@ fun ReplayItemCard(
     }
 }
 
+fun sanitizeRtspUrl(url: String): String {
+    if (url.isBlank() || url == "NONE") return "NONE"
+    return try {
+        if (url.contains("@")) {
+            val prefix = url.substringBefore("://") + "://"
+            val afterAt = url.substringAfter("@")
+            "$prefix***:***@$afterAt"
+        } else {
+            url
+        }
+    } catch (_: Exception) {
+        "rtsp://***"
+    }
+}
+
 @Composable
-fun AdminPanelDialog(uiState: TvUiState, onDismiss: () -> Unit, onUnpair: () -> Unit) {
+fun AdminPanelDialog(
+    uiState: TvUiState,
+    onDismiss: () -> Unit,
+    onUnpair: () -> Unit,
+    onToggleStreamQuality: () -> Unit
+) {
     val focusRequester = remember { FocusRequester() }
+    val tvMetrics = rememberTvScreenMetrics()
+    var isStreamModeFocused by remember { mutableStateOf(false) }
     val sdf = SimpleDateFormat("HH:mm:ss", Locale.US).apply {
         timeZone = TimeZone.getTimeZone("Asia/Manila")
+    }
+    
+    val activeRtspRaw = if (uiState.useMainStream) {
+        if (uiState.rtspUrl != "") uiState.rtspUrl else uiState.rtspSubUrl
+    } else {
+        if (uiState.rtspSubUrl != "") uiState.rtspSubUrl else uiState.rtspUrl
     }
     
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             color = Color(0xFF1E1E1E),
             shape = RoundedCornerShape(24.dp),
-            modifier = Modifier.width(600.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+            modifier = Modifier.width(tvMetrics.dialogWidthDp).zIndex(420f),
+            border = BorderStroke(1.5.dp, Color(0xFF99FF00).copy(alpha = 0.5f))
         ) {
             Column(
                 modifier = Modifier.padding(32.dp),
                 horizontalAlignment = Alignment.Start
             ) {
                 Text("TV ADMIN PANEL", color = Color(0xFF99FF00), fontSize = 28.sp, fontWeight = FontWeight.Black)
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(20.dp))
+                
+                // --- STREAM MODE OPTION (LAN MAIN STREAM VS SUB STREAM) ---
+                Text("STREAM SOURCE SELECTION", color = Color.White.copy(alpha = 0.4f), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Surface(
+                    onClick = onToggleStreamQuality,
+                    color = if (isStreamModeFocused) Color(0xFF99FF00) else Color(0xFF2B2B2B),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(2.dp, if (isStreamModeFocused) Color.White else Color.Transparent),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { isStreamModeFocused = it.isFocused },
+                    contentColor = if (isStreamModeFocused) Color.Black else Color.White
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = if (uiState.useMainStream) "MODE: HIGHEST QUALITY (MAIN STREAM)" else "MODE: LOW LATENCY (SUB STREAM)",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 15.sp,
+                                color = if (isStreamModeFocused) Color.Black else Color(0xFF99FF00)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (uiState.useMainStream) "Optimized for local LAN court Wi-Fi" else "Optimized for standard/low bandwidth",
+                                fontSize = 12.sp,
+                                color = if (isStreamModeFocused) Color.Black.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.6f)
+                            )
+                        }
+                        Surface(
+                            color = if (isStreamModeFocused) Color.Black else Color(0xFF99FF00),
+                            shape = RoundedCornerShape(20.dp)
+                        ) {
+                            Text(
+                                text = "TOGGLE",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 12.sp,
+                                color = if (isStreamModeFocused) Color(0xFF99FF00) else Color.Black,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
                 
                 // --- TECHNICAL DIAGNOSTICS ---
-                Text("TECHNICAL DIAGNOSTICS", color = Color.White.copy(alpha = 0.4f), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(12.dp))
+                Text("TECHNICAL DIAGNOSTICS", color = Color.White.copy(alpha = 0.4f), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(10.dp))
                 
                 DiagnosticRow("Paired Device ID", uiState.pairedDeviceId)
                 DiagnosticRow("Firebase Link", if (uiState.firebaseConnected) "CONNECTED" else "DISCONNECTED", if (uiState.firebaseConnected) Color(0xFF99FF00) else Color.Red)
                 DiagnosticRow("Sync Status", uiState.debugInfo, if (uiState.isTabletOnline) Color(0xFF99FF00) else Color.Yellow)
                 DiagnosticRow("Cloud Latency", if (uiState.lastUpdateTimestamp > 0L) sdf.format(Date(uiState.lastUpdateTimestamp)) else "N/A")
-                DiagnosticRow("Active RTSP URL", if (uiState.rtspSubUrl != "") uiState.rtspSubUrl else if (uiState.rtspUrl != "") uiState.rtspUrl else "NONE")
-                DiagnosticRow("Local Replay", if (uiState.localReplayUrl != "") uiState.localReplayUrl else "NOT READY")
+                DiagnosticRow("Active RTSP URL", sanitizeRtspUrl(activeRtspRaw))
+                DiagnosticRow("Local Replay", if (uiState.localReplayUrl != "") "READY" else "NOT READY", if (uiState.localReplayUrl != "") Color(0xFF99FF00) else Color.White.copy(alpha = 0.5f))
                 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(28.dp))
                 
                 // --- ACTIONS ---
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Button(
                         onClick = onUnpair,
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
-                        modifier = Modifier.weight(1f).height(56.dp).focusRequester(focusRequester)
+                        modifier = Modifier.weight(1f).height(54.dp).focusRequester(focusRequester)
                     ) {
                         Text("PAIR NEW DEVICE", color = Color.White, fontWeight = FontWeight.Bold)
                     }
@@ -396,7 +503,7 @@ fun AdminPanelDialog(uiState: TvUiState, onDismiss: () -> Unit, onUnpair: () -> 
                     Button(
                         onClick = onDismiss,
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)),
-                        modifier = Modifier.weight(1f).height(56.dp)
+                        modifier = Modifier.weight(1f).height(54.dp)
                     ) {
                         Text("CLOSE PANEL", color = Color.White)
                     }
@@ -464,7 +571,7 @@ fun DigitalClockOverlay() {
 }
 
 @Composable
-fun OfflineAlertOverlay(uiState: TvUiState, viewModel: TvDashboardViewModel) {
+fun OfflineAlertOverlay(uiState: TvUiState, viewModel: TvDashboardViewModel, onUnpairRequest: () -> Unit) {
     val retryFocusRequester = remember { FocusRequester() }
     var isRetryFocused by remember { mutableStateOf(false) }
     var isPairFocused by remember { mutableStateOf(false) }
@@ -541,7 +648,7 @@ fun OfflineAlertOverlay(uiState: TvUiState, viewModel: TvDashboardViewModel) {
 
                 // PAIR NEW DEVICE BUTTON
                 Button(
-                    onClick = { viewModel.unpairDevice() },
+                    onClick = onUnpairRequest,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (isPairFocused) Color.Red else Color.Transparent
                     ),
@@ -583,6 +690,104 @@ fun OfflineAlertOverlay(uiState: TvUiState, viewModel: TvDashboardViewModel) {
     
     LaunchedEffect(Unit) {
         retryFocusRequester.requestFocus()
+    }
+}
+
+@Composable
+fun UnpairWarningDialog(
+    onConfirmUnpair: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val focusRequester = remember { FocusRequester() }
+    var isUnpairFocused by remember { mutableStateOf(false) }
+    var isCancelFocused by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            color = Color(0xFF1E1E1E),
+            shape = RoundedCornerShape(24.dp),
+            border = BorderStroke(2.dp, Color.Red),
+            modifier = Modifier.width(560.dp).zIndex(700f)
+        ) {
+            Column(
+                modifier = Modifier.padding(32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("⚠️", fontSize = 64.sp)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    "WARNING: UNPAIR DEVICE?",
+                    color = Color.Red,
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    "Clicking unpair will disconnect this TV and WIPE ALL saved TV app settings (pairing ID, stream preferences, and sync configurations).",
+                    color = Color.White.copy(alpha = 0.85f),
+                    textAlign = TextAlign.Center,
+                    fontSize = 16.sp,
+                    lineHeight = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(28.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Button(
+                        onClick = onConfirmUnpair,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isUnpairFocused) Color.Red else Color(0xFF333333)
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(54.dp)
+                            .focusRequester(focusRequester)
+                            .onFocusChanged { isUnpairFocused = it.isFocused }
+                            .border(2.dp, if (isUnpairFocused) Color.White else Color.Transparent, RoundedCornerShape(12.dp))
+                    ) {
+                        Text(
+                            "WIPE & UNPAIR",
+                            color = Color.White,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 15.sp
+                        )
+                    }
+
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isCancelFocused) Color.White else Color(0xFF333333)
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(54.dp)
+                            .onFocusChanged { isCancelFocused = it.isFocused }
+                            .border(2.dp, if (isCancelFocused) Color.Black else Color.Transparent, RoundedCornerShape(12.dp))
+                    ) {
+                        Text(
+                            "CANCEL",
+                            color = if (isCancelFocused) Color.Black else Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
     }
 }
 
@@ -649,10 +854,6 @@ fun VideoPlayerLayer(uiState: TvUiState, viewModel: TvDashboardViewModel) {
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
             repeatMode = Player.REPEAT_MODE_OFF
-            val params = trackSelectionParameters.buildUpon()
-                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_AUDIO, true)
-                .build()
-            trackSelectionParameters = params
         }
     }
 
@@ -675,6 +876,7 @@ fun VideoPlayerLayer(uiState: TvUiState, viewModel: TvDashboardViewModel) {
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 playbackStatus = "Source Error (Check URL)"
+                android.util.Log.e("VideoPlayerLayer", "Playback Error: ${error.message}", error)
             }
         }
         exoPlayer.addListener(listener)
@@ -683,18 +885,24 @@ fun VideoPlayerLayer(uiState: TvUiState, viewModel: TvDashboardViewModel) {
         }
     }
 
-    // 1. Calculate the active URL based on priority
-    val activeUrl = remember(uiState.status, uiState.rtspUrl, uiState.rtspSubUrl, uiState.lastRecordingUrl, uiState.localReplayUrl, uiState.isAutoReplayActive, uiState.isTabletOnline) {
+    // 1. Calculate the active URL based on stream preference and priority
+    val activeRtspUrl = if (uiState.useMainStream) {
+        if (uiState.rtspUrl != "") uiState.rtspUrl else uiState.rtspSubUrl
+    } else {
+        if (uiState.rtspSubUrl != "") uiState.rtspSubUrl else uiState.rtspUrl
+    }
+
+    val activeUrl = remember(uiState.status, uiState.rtspUrl, uiState.rtspSubUrl, uiState.lastRecordingUrl, uiState.localReplayUrl, uiState.isAutoReplayActive, uiState.isTabletOnline, uiState.useMainStream) {
         val rawUrl = if (!uiState.isTabletOnline && !uiState.isAutoReplayActive) ""
         else if (uiState.status == "RECORDING" || uiState.status == "PAUSED") {
-            if (uiState.rtspSubUrl != "") uiState.rtspSubUrl else uiState.rtspUrl
+            activeRtspUrl
         } else if (uiState.status == "IDLE") {
             if (uiState.isAutoReplayActive && uiState.localReplayUrl != "") uiState.localReplayUrl
             else if (uiState.isAutoReplayActive && uiState.lastRecordingUrl != "") uiState.lastRecordingUrl
-            else if (uiState.rtspSubUrl != "") uiState.rtspSubUrl
+            else if (activeRtspUrl != "") activeRtspUrl
             else if (uiState.localReplayUrl != "") uiState.localReplayUrl
             else if (uiState.lastRecordingUrl != "") uiState.lastRecordingUrl
-            else uiState.rtspUrl
+            else activeRtspUrl
         } else ""
 
         // Convert Google Drive view URL (https://drive.google.com/file/d/XYZ/view)
@@ -724,13 +932,24 @@ fun VideoPlayerLayer(uiState: TvUiState, viewModel: TvDashboardViewModel) {
 
         playbackStatus = "Connecting to stream..."
         android.util.Log.d("VideoPlayerLayer", "Active URL: $activeUrl")
-        
-        val mediaItem = MediaItem.Builder()
-            .setUri(activeUrl)
-            .setMimeType(if (activeUrl.startsWith("rtsp")) MimeTypes.APPLICATION_RTSP else MimeTypes.VIDEO_MP4)
-            .build()
 
-        val mediaSource = if (activeUrl.startsWith("rtsp")) {
+        // Disable audio track only for RTSP to prevent RTP sync stalls; keep enabled for HTTP MP4 replay
+        val isRtsp = activeUrl.startsWith("rtsp")
+        val params = exoPlayer.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_AUDIO, isRtsp)
+            .build()
+        exoPlayer.trackSelectionParameters = params
+        
+        val mediaItem = if (isRtsp) {
+            MediaItem.Builder()
+                .setUri(activeUrl)
+                .setMimeType(MimeTypes.APPLICATION_RTSP)
+                .build()
+        } else {
+            MediaItem.fromUri(activeUrl)
+        }
+
+        val mediaSource = if (isRtsp) {
             RtspMediaSource.Factory()
                 .setForceUseRtpTcp(true) // Force TCP for stability (Golden Build Standard)
                 .setUserAgent("SeenMyPickleTV/1.0")
@@ -955,46 +1174,173 @@ fun MatchInfoOverlay(uiState: TvUiState) {
 @Composable
 fun PairingScreen(uiState: TvUiState, onPair: (String) -> Unit) {
     var deviceId by remember { mutableStateOf("") }
+    var isInputFocused by remember { mutableStateOf(false) }
+    var isPairButtonFocused by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+    val tvMetrics = rememberTvScreenMetrics()
+
+    val brandShadow = Shadow(
+        color = Color.Black.copy(alpha = 0.8f),
+        offset = Offset(4f, 4f),
+        blurRadius = 8f
+    )
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF121212)), 
+            .background(Color(0xFF0F0F10)),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("PickleView TV v11", color = Color(0xFF99FF00), fontSize = 36.sp, fontWeight = FontWeight.ExtraBold)
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("Enter Tablet Device ID", color = Color.White.copy(alpha = 0.7f), fontSize = 18.sp)
-            Spacer(modifier = Modifier.height(32.dp))
-            TextField(
-                value = deviceId,
-                onValueChange = { deviceId = it },
-                label = { Text("Device ID (e.g. A1B2-C3D4)") },
-                modifier = Modifier.width(450.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White
-                )
-            )
-            Spacer(modifier = Modifier.height(32.dp))
-            Button(
-                onClick = { if (deviceId != "") onPair(deviceId) },
-                modifier = Modifier.height(64.dp).width(200.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF99FF00))
+        Surface(
+            color = Color(0xFF1B1C1E),
+            shape = RoundedCornerShape(28.dp),
+            border = BorderStroke(2.dp, Color(0xFF99FF00).copy(alpha = 0.6f)),
+            modifier = Modifier
+                .width(tvMetrics.pairingCardWidthDp)
+                .shadow(elevation = 24.dp, shape = RoundedCornerShape(28.dp))
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 40.dp, vertical = 36.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("PAIR NOW", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-            }
-            if (uiState.debugInfo.isNotBlank() && uiState.debugInfo != "Initializing...") {
-                Spacer(modifier = Modifier.height(24.dp))
-                Text(
-                    text = uiState.debugInfo,
-                    color = if (uiState.debugInfo.startsWith("Sync OK")) Color(0xFF99FF00) else Color.Yellow,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
+                // LOGO / BRANDING HEADER
+                Image(
+                    painter = painterResource(id = com.pbcam.tv.R.drawable.logo_main),
+                    contentDescription = "SeenMyPickle Logo",
+                    modifier = Modifier
+                        .height(90.dp)
+                        .shadow(elevation = 12.dp),
+                    contentScale = ContentScale.Fit
                 )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "COURT DISPLAY PAIRING",
+                    color = Color(0xFF99FF00),
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 2.sp,
+                    style = LocalTextStyle.current.copy(shadow = brandShadow)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "Enter the Pairing ID shown on the court tablet header",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 16.sp,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // PAIRING ID INPUT FIELD
+                OutlinedTextField(
+                    value = deviceId,
+                    onValueChange = { input ->
+                        val clean = input.uppercase().filter { it.isLetterOrDigit() || it == '-' }.take(12)
+                        deviceId = clean
+                    },
+                    placeholder = { 
+                        Text(
+                            "e.g. PB-A1B2-C3D4", 
+                            color = Color.White.copy(alpha = 0.35f),
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center
+                        ) 
+                    },
+                    singleLine = true,
+                    textStyle = LocalTextStyle.current.copy(
+                        color = Color.White,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Black,
+                        textAlign = TextAlign.Center,
+                        letterSpacing = 2.sp
+                    ),
+                    modifier = Modifier
+                        .width(480.dp)
+                        .focusRequester(focusRequester)
+                        .onFocusChanged { isInputFocused = it.isFocused }
+                        .border(
+                            2.dp, 
+                            if (isInputFocused) Color(0xFF99FF00) else Color.White.copy(alpha = 0.2f), 
+                            RoundedCornerShape(16.dp)
+                        ),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        focusedContainerColor = Color(0xFF2B2C30),
+                        unfocusedContainerColor = Color(0xFF222326)
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(28.dp))
+
+                // PAIR BUTTON
+                Button(
+                    onClick = { if (deviceId.isNotBlank()) onPair(deviceId) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isPairButtonFocused) Color(0xFF99FF00) else Color(0xFF333438)
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .width(260.dp)
+                        .height(60.dp)
+                        .onFocusChanged { isPairButtonFocused = it.isFocused }
+                        .border(
+                            2.dp, 
+                            if (isPairButtonFocused) Color.White else Color.Transparent, 
+                            RoundedCornerShape(16.dp)
+                        )
+                        .shadow(elevation = if (isPairButtonFocused) 12.dp else 2.dp, shape = RoundedCornerShape(16.dp))
+                ) {
+                    Text(
+                        "PAIR NOW", 
+                        color = if (isPairButtonFocused) Color.Black else Color.White, 
+                        fontWeight = FontWeight.Black, 
+                        fontSize = 20.sp,
+                        letterSpacing = 1.sp
+                    )
+                }
+
+                // STATUS INDICATOR
+                if (uiState.debugInfo.isNotBlank() && uiState.debugInfo != "Initializing...") {
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Surface(
+                        color = Color.Black.copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(20.dp),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(if (uiState.debugInfo.startsWith("Sync OK")) Color(0xFF99FF00) else Color.Yellow)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = uiState.debugInfo,
+                                color = if (uiState.debugInfo.startsWith("Sync OK")) Color(0xFF99FF00) else Color.Yellow,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
             }
         }
+    }
+
+    LaunchedEffect(Unit) {
+        try { focusRequester.requestFocus() } catch (_: Exception) {}
     }
 }
 

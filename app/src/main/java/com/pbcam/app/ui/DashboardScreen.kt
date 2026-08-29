@@ -14,6 +14,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -81,11 +84,11 @@ fun DashboardScreen(
     val recordingDurationSeconds: Long by viewModel.recordingDurationSeconds.collectAsStateWithLifecycle()
     val lastPreviewFrame: Bitmap? by viewModel.lastPreviewFrame.collectAsStateWithLifecycle()
     
-    val configuration = LocalConfiguration.current
-    val isTablet = configuration.smallestScreenWidthDp >= 600
+    val metrics = rememberDeviceScreenMetrics()
+    val isTablet = metrics.isTablet
     
-    val controlSize = if (isTablet) 72.dp else 56.dp
-    val iconSize = if (isTablet) 32.dp else 24.dp
+    val controlSize = metrics.controlButtonSize
+    val iconSize = metrics.controlIconSize
     val sidePadding = if (isTablet) 32.dp else 16.dp
     val headerVerticalPadding = if (isTablet) 12.dp else 4.dp
     
@@ -123,13 +126,7 @@ fun DashboardScreen(
         onDispose { listener.disable() }
     }
 
-    var lastRecordingState by remember { mutableStateOf(uiState.recordingState) }
-    LaunchedEffect(uiState.recordingState) {
-        if (lastRecordingState != RecordingState.IDLE && uiState.recordingState == RecordingState.IDLE) {
-            showWaiverDialog = true
-        }
-        lastRecordingState = uiState.recordingState
-    }
+    var hasAgreedWaiver by rememberSaveable { mutableStateOf(false) }
 
     val isRecording = uiState.recordingState != RecordingState.IDLE
     val isPreviewActive = uiState.previewState == PreviewState.PLAYING
@@ -170,6 +167,7 @@ fun DashboardScreen(
                     RtspPreview(
                         url = previewUrl,
                         isPaused = !isPreviewActive,
+                        isMuted = uiState.isPreviewMuted,
                         isKeyboardVisible = isKeyboardVisible,
                         onFrameCaptured = { frame -> frame?.let { viewModel.updateLastFrame(it) } }
                     )
@@ -353,6 +351,8 @@ fun DashboardScreen(
                     uiState = uiState,
                     viewModel = viewModel,
                     isTablet = isTablet,
+                    hasAgreedWaiver = hasAgreedWaiver,
+                    onRequestWaiver = { showWaiverDialog = true },
                     onStart = onStartRecording,
                     onStop = onStopRecording
                 )
@@ -603,23 +603,43 @@ fun DashboardScreen(
 
         if (showWaiverDialog && !showAdminPanel) {
             AlertDialog(
-                onDismissRequest = { },
-                title = { Text("Recording Notification") },
+                onDismissRequest = { showWaiverDialog = false },
+                title = { Text("Recording & Privacy Waiver", style = MaterialTheme.typography.titleLarge) },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 220.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Text(
-                            "Your recording is now processing in the background. You will receive an email notification shortly once your footage is ready for viewing."
+                            "By entering your email address and recording this court session, you acknowledge and agree that play is being recorded for court monitoring and video delivery purposes.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Text(
+                            "Recorded footage will be processed automatically and delivered directly to your specified email address.",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 },
                 confirmButton = {
                     Button(
                         onClick = { 
+                            hasAgreedWaiver = true
                             showWaiverDialog = false
-                            viewModel.startPreview()
+                            if (isConfigReady && (uiState.selectedEmails.isNotEmpty() || uiState.isEmailValid)) {
+                                onStartRecording()
+                            }
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("I AGREE") }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { showWaiverDialog = false }
+                    ) { Text("CANCEL") }
                 }
             )
         }
@@ -936,20 +956,30 @@ fun InternalCameraPreview(isPaused: Boolean, isKeyboardVisible: Boolean, onFrame
 
 @UnstableApi
 @Composable
-fun RtspPreview(url: String, isPaused: Boolean, isKeyboardVisible: Boolean, onFrameCaptured: (Bitmap?) -> Unit) {
+fun RtspPreview(
+    url: String, 
+    isPaused: Boolean, 
+    isMuted: Boolean, 
+    isKeyboardVisible: Boolean, 
+    onFrameCaptured: (Bitmap?) -> Unit
+) {
     val context = LocalContext.current
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
             repeatMode = Player.REPEAT_MODE_OFF
-            val params = trackSelectionParameters.buildUpon()
-                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_AUDIO, true)
-                .build()
-            trackSelectionParameters = params
         }
     }
 
     var isLoading by remember { mutableStateOf(true) }
     var errorOccurred by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isMuted) {
+        exoPlayer.volume = if (isMuted) 0f else 1f
+        val params = exoPlayer.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_AUDIO, isMuted)
+            .build()
+        exoPlayer.trackSelectionParameters = params
+    }
 
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
@@ -1056,7 +1086,15 @@ fun RtspPreview(url: String, isPaused: Boolean, isKeyboardVisible: Boolean, onFr
 }
 
 @Composable
-fun RecordingControlCard(uiState: DashboardUiState, viewModel: DashboardViewModel, isTablet: Boolean, onStart: () -> Unit, onStop: () -> Unit) {
+fun RecordingControlCard(
+    uiState: DashboardUiState, 
+    viewModel: DashboardViewModel, 
+    isTablet: Boolean, 
+    hasAgreedWaiver: Boolean,
+    onRequestWaiver: () -> Unit,
+    onStart: () -> Unit, 
+    onStop: () -> Unit
+) {
     val isRecording = uiState.recordingState != RecordingState.IDLE
     val isPaused = uiState.recordingState == RecordingState.PAUSED
     val isConfigReady = uiState.isConfigReady
@@ -1080,17 +1118,24 @@ fun RecordingControlCard(uiState: DashboardUiState, viewModel: DashboardViewMode
         Column(modifier = Modifier.padding(if (isTablet) 24.dp else 16.dp), verticalArrangement = Arrangement.spacedBy(if (isTablet) 20.dp else 12.dp)) {
             if (!isRecording) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val isDuplicate = uiState.alertEmail.isNotBlank() && uiState.selectedEmails.any { it.equals(uiState.alertEmail.trim(), ignoreCase = true) }
+                    val hasEmailError = (uiState.alertEmail.isNotBlank() && !uiState.isEmailValid) || isDuplicate
+
                     OutlinedTextField(
                         value = uiState.alertEmail,
-                        onValueChange = { viewModel.updateAlertEmail(it) },
+                        onValueChange = { 
+                            viewModel.updateAlertEmail(it) 
+                        },
                         label = { Text(if (uiState.selectedEmails.size >= 5) "Recipient limit reached (5)" else "Email address") },
                         placeholder = { Text("Email address") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         enabled = uiState.selectedEmails.size < 5,
-                        isError = uiState.alertEmail.isNotBlank() && !uiState.isEmailValid,
+                        isError = hasEmailError,
                         supportingText = {
-                            if (uiState.alertEmail.isNotBlank() && !uiState.isEmailValid) {
+                            if (isDuplicate) {
+                                Text("This email address has already been added", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                            } else if (uiState.alertEmail.isNotBlank() && !uiState.isEmailValid) {
                                 Text("Please enter a valid email address", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
                             }
                         },
@@ -1111,7 +1156,7 @@ fun RecordingControlCard(uiState: DashboardUiState, viewModel: DashboardViewMode
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { viewModel.addEmail(uiState.alertEmail) }),
                         trailingIcon = {
-                            if ((uiState.isEmailValid) && (uiState.selectedEmails.size < 5)) {
+                            if (uiState.isEmailValid && !isDuplicate && uiState.selectedEmails.size < 5) {
                                 IconButton(onClick = { viewModel.addEmail(uiState.alertEmail) }) {
                                     Icon(
                                         imageVector = Icons.Default.Add,
@@ -1142,7 +1187,7 @@ fun RecordingControlCard(uiState: DashboardUiState, viewModel: DashboardViewMode
 
                     val isEmailReady = uiState.selectedEmails.isNotEmpty() || uiState.isEmailValid
                     Button(
-                        onClick = onStart,
+                        onClick = { if (!hasAgreedWaiver) onRequestWaiver() else onStart() },
                         modifier = Modifier.fillMaxWidth().height(64.dp),
                         enabled = isConfigReady && isEmailReady,
                         colors = ButtonDefaults.buttonColors(

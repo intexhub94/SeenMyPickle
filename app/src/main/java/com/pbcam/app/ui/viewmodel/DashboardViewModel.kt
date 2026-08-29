@@ -879,13 +879,14 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun addEmail(email: String) {
-        if (email == "" || !Patterns.EMAIL_ADDRESS.matcher(email).matches()) return
+        val trimmed = email.trim()
+        if (trimmed.isBlank() || !Patterns.EMAIL_ADDRESS.matcher(trimmed).matches()) return
         if (_uiState.value.selectedEmails.size >= 5) return
-        if (_uiState.value.selectedEmails.contains(email)) return
+        if (_uiState.value.selectedEmails.any { it.equals(trimmed, ignoreCase = true) }) return
         
         _uiState.update { 
             it.copy(
-                selectedEmails = it.selectedEmails + email,
+                selectedEmails = it.selectedEmails + trimmed,
                 alertEmail = "",
                 isEmailValid = false
             ) 

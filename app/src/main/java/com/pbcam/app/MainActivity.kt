@@ -116,9 +116,10 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onStartRecording = {
                                     val combinedList = uiState.selectedEmails.toMutableList()
-                                    if (uiState.isEmailValid && !combinedList.contains(uiState.alertEmail)) {
+                                    val typedTrimmed = uiState.alertEmail.trim()
+                                    if (uiState.isEmailValid && combinedList.none { it.equals(typedTrimmed, ignoreCase = true) }) {
                                         if (combinedList.size < 5) {
-                                            combinedList.add(uiState.alertEmail)
+                                            combinedList.add(typedTrimmed)
                                         }
                                     }
                                     val emails = combinedList.joinToString(",")

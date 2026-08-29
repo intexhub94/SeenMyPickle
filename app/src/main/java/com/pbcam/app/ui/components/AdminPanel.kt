@@ -18,6 +18,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -696,6 +698,22 @@ private fun SettingsSection(
                         DropdownMenuItem(text = { Text(source.name) }, onClick = { onSourceChange(source); expanded = false })
                     }
                 }
+            }
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Wi-Fi Camera Audio (Live)", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                FilterChip(
+                    selected = !uiState.isPreviewMuted,
+                    onClick = { viewModel.toggleMute() },
+                    label = { Text(if (uiState.isPreviewMuted) "MUTED" else "AUDIO ON") },
+                    leadingIcon = {
+                        Icon(
+                            if (uiState.isPreviewMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                )
             }
 
             if (localSource == com.pbcam.app.data.CameraSource.RTSP) {

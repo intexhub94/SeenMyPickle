@@ -62,7 +62,8 @@ data class TvUiState(
     val pendingReplaySessionId: Long = -1L,
     val recentSessions: List<TvReplaySession> = emptyList(),
     val isReplayListOpen: Boolean = false,
-    val activeReplaySession: TvReplaySession? = null
+    val activeReplaySession: TvReplaySession? = null,
+    val useMainStream: Boolean = false
 )
 
 class TvDashboardViewModel(application: Application) : AndroidViewModel(application) {
@@ -91,8 +92,11 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
             _uiState.update { it.copy(isSplashScreenActive = false) }
         }
 
-        // --- PAIRING PERSISTENCE ---
+        // --- PAIRING PERSISTENCE & STREAM PREFERENCE ---
         val savedId = prefs.getString("paired_device_id", "") ?: ""
+        val savedUseMainStream = prefs.getBoolean("use_main_stream", false)
+        _uiState.update { it.copy(useMainStream = savedUseMainStream) }
+
         if (savedId != "") {
             pairDevice(savedId)
         } else {
@@ -135,16 +139,23 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun unpairDevice() {
-        prefs?.edit()?.remove("paired_device_id")?.apply()
+        prefs?.edit()?.clear()?.apply()
         statusListener?.let { 
             getDb().getReference("live_status/${_uiState.value.pairedDeviceId}").removeEventListener(it)
         }
         watchdogJob?.cancel()
+        lanProbeJob?.cancel()
         _uiState.update { TvUiState(isSplashScreenActive = false) }
     }
 
     fun toggleSettings(open: Boolean) {
         _uiState.update { it.copy(isSettingsOpen = open) }
+    }
+
+    fun toggleStreamQuality() {
+        val newValue = !_uiState.value.useMainStream
+        prefs.edit().putBoolean("use_main_stream", newValue).apply()
+        _uiState.update { it.copy(useMainStream = newValue) }
     }
 
     fun toggleReplayList(open: Boolean) {

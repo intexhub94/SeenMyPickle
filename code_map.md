@@ -23,6 +23,8 @@ This document serves as the master logical map for the SeenMyPickle Android proj
     - Entry point. 
     - Logic: Permission gating, Dynamic Orientation (Portrait for Setup on mobile, Landscape for Dashboard), Edge-to-edge implementation.
     - **Hardening**: Dynamically enforces `FLAG_KEEP_SCREEN_ON` and `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` to ensure hardware/service continuity.
+- **`DeviceScreenMetrics.kt`**:
+    - **Dynamic DPI & Metrics**: Computes hardware DPI, density, smallest width (`sw`), and UI scale factors (`controlIconSize`, `controlButtonSize`, `cardWidthDp`) dynamically across phones, tablets, and TVs.
 - **`DashboardViewModel.kt`**:
     - **The "Brain"**: Centralized state (`DashboardUiState`).
     - Logic: Real-time licensing (Firebase), dual-stream state management, descriptive status engine, and admin authorization.
@@ -47,7 +49,8 @@ This document serves as the master logical map for the SeenMyPickle Android proj
         - **Multi-Player Support**: Integrated `AssistChip` UI allowing up to 5 player emails per session with smart input-to-chip handoff.
         - **Broadcast Mode**: Centralized status banner (Internal/USB) and unified center card (RTSP).
         - **Immersive Continuity**: Frozen Frame bitmap capture (720p). **Anti-Ghosting**: Snapshot loop is automatically suspended when keyboard is visible to prevent background burn-in.
-        - **Streamlined Controls**: The recording card focuses exclusively on email entry (Title: "Match Recording" removed for clarity).
+        - **Streamlined Controls**: The recording card focuses exclusively on email entry with case-insensitive duplicate prevention (`supportingText = "This email address has already been added"`).
+        - **Upfront Waiver Gate**: Prompts Recording Waiver & Disclaimer upfront when tapping "START MATCH" or "+ Add Player". Post-recording match completion transitions silently into auto-preview with zero popup interruptions.
         - **Adaptive Layout**: Corner-anchored controls for all devices.
         - **Auto-Preview**: Automatically triggers monitoring after waiver acknowledgement.
 - **`SetupWizardScreen.kt`**:
@@ -57,6 +60,7 @@ This document serves as the master logical map for the SeenMyPickle Android proj
     - **Licensing UX**: Implements `LicenseKeyTransformation` for non-intrusive `XXXX-XXXX-XXXX-XXXX` visual formatting and **Bi-Directional QR Support** (Scan License Key / Generate Device ID QR).
 - **`AdminPanel.kt`**:
     - Features: Sectioned management, storage monitoring, and **Performance-Limited History** (Recent 10).
+    - **Camera & Background Section**: Houses source selection, RTSP stream URLs, camera auto-detection, and the "Wi-Fi Camera Audio (Live)" setting chip.
     - **Watermark Customization**: Live logo upload and 4-corner position selection (Top-Left, Top-Right, Bottom-Left, Bottom-Right).
     - **Optimized Review**: Tap-to-Reveal email privacy and dedicated **"View All"** handoff to `FullHistoryPane`.
 - **`FullHistoryPane.kt`**:
@@ -65,21 +69,22 @@ This document serves as the master logical map for the SeenMyPickle Android proj
 ### 📺 TV Layer (Package: `com.pbcam.tv`)
 - **App ID**: `com.pbcam.tv` (Ensures unique deployment identity).
 - **Launcher Visibility**: Declares both `LAUNCHER` and `LEANBACK_LAUNCHER` intent filters in `AndroidManifest.xml` for visibility across both standard phone/tablet emulators and TV OS devices.
+- **`TvScreenMetrics.kt`**:
+    - **Adaptive TV Scaling**: Computes dynamic TV scale factors, `dialogWidthDp`, and `pairingCardWidthDp` based on screen DPI and smallest width.
 - **`MainActivity.kt`**: Entry point; initializes the `TvDashboardScreen`.
 - **`TvDashboardViewModel.kt`**: 
     - **Hybrid Sync Engine**: Combines **Local LAN HTTP Probing** (`http://{tabletIp}:8080/status`) every 3 seconds for sub-10ms court Wi-Fi synchronization with single-instance **Firebase Realtime Database** event listeners for cloud fallback.
     - **Single-Clock Watchdog**: Evaluates staleness using local TV timestamps (`System.currentTimeMillis() - lastLocalReceiveTime`) to eliminate inter-device clock skew false disconnections.
     - **Startup Barrier**: Uses `isInitialSyncPending` to hold splash screen active until initial WebSocket connection and snapshot delivery complete, eliminating cold launch disconnect flashes.
     - **Replay State Machine**: Manages the multi-stage replay lifecycle: `LOADING` (Animation) -> `PLAYING` -> `COMPLETE` (Prompt with 20s countdown).
+    - **Stream Quality Persistence**: Maintains `useMainStream` state in `tv_prefs` allowing admins to force Main Stream (Highest Quality) for LAN court connections.
 - **`TvNetworkManager.kt`**:
     - **LAN Prober**: Performs sub-10ms HTTP GET probes to `http://{tabletIp}:8080/status` for zero-latency local court Wi-Fi status synchronization.
 - **`TvDashboardScreen.kt`**: 
-    - **VideoPlayerLayer**: High-performance Media3 wrapper prioritizing **Sub-Stream (stream2)**; synchronized to auto-stop during tablet downtime or active replays. Implements **Auto-Negotiation (UDP/TCP)** to prevent connection conflicts with the Tablet's recording stream.
-    - **BrandingOverlay**: Renders official lower-center logo/tagline.
-    - **DigitalClockOverlay**: Renders the digital clock anchored to the **Bottom-Right**.
-    - **SettingsButton**: Renders the D-Pad focusable gear icon anchored to the **Bottom-Left**.
-    - **AdminPanelDialog**: Renders comprehensive technical diagnostic dashboard with live `Sync Status` (Local LAN vs Cloud).
-    - **PairingScreen**: Displays clean D-Pad input box with real-time status strings (`Sync OK`, `Node Missing`, `Permission denied`) under the PAIR NOW button.
+    - **Obscured Diagnostics & Feed**: Obscures camera feed with a 90% dark backdrop when dialogs are open, and sanitizes RTSP credentials in diagnostic view.
+    - **VideoPlayerLayer**: High-performance Media3 wrapper supporting stream selection (LAN Main Stream vs Sub Stream); synchronized to auto-stop during tablet downtime or active replays.
+    - **AdminPanelDialog**: Renders technical diagnostic dashboard with sanitized credentials and interactive Stream Quality mode switch.
+    - **PairingScreen**: Ultra-clean TV pairing view with large typography (`24.sp` input), logo header, high-contrast dark card container, and glowing D-Pad focus indicators.
     - **Diagnostic/Alert Layer**: Renders high-priority brand-aligned "TABLET OFFLINE" popups with auto-retry countdowns and **Emergency Pairing** recovery.
     - **Status Banner**: Professional detached pulsing bubbles for high-visibility public view (Top).
 

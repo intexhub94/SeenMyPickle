@@ -53,6 +53,7 @@ Key highlights include:
     - **Header Branding Background**: The top-left branding area (Logo, Status, Court Tag, Device ID, and Progress) MUST be wrapped in a high-contrast `Surface` with **0.4f opacity** black background, **8dp shadow**, and **16dp rounded corners** to match the dashboard icon aesthetic while ensuring 100% legibility regardless of the camera background.
 - **Aspect Ratio Hardening (RTSP)**: RTSP feeds MUST use the native `PlayerView` with `RESIZE_MODE_ZOOM` (Center Crop) to ensure 100% background coverage on all device aspect ratios.
 - **Adaptive Ergonomics**:
+    - **Dynamic Device DPI & Screen Metrics (`rememberDeviceScreenMetrics`)**: The UI MUST dynamically compute device DPI, smallest width (`sw`), and density scaling factors (`DeviceScreenMetrics`) to scale typography, action buttons, dialogs, and cards across phones (including high-DPI landscape displays), tablets, and 4K TVs.
     - **Engine Logic**: Dashboard MUST use a conditional layout engine based on `smallestScreenWidthDp >= 600` (Tablet).
     - **Tablet Rule (Side-by-Side)**: Controls MUST be anchored to the bottom corners (Settings Bottom-Start, Match Controls Bottom-End) to leverage the wide screen space.
     - **Mobile Rule (Stacked)**: Controls MUST be stacked vertically in the bottom-center (Match Controls above Settings Cluster) to prevent horizontal clashing and optimize one-handed thumb reach.
@@ -154,7 +155,8 @@ Key highlights include:
     - **Smart Combination**: The system MUST combine added chips and the currently typed email into a single recipient list (max 5) when starting a match.
     - **Input Handoff**: The email text field MUST automatically clear after an email is added as a chip.
     - **Visual Discovery**: The email input field MUST include a trailing **"+" icon** when a valid email is present and space is available in the recipient list. This provides a clear visual cue for adding multiple players.
-- **Auto-Preview Handoff**: Upon acknowledging the post-match "Recording Notification" (Waiver), the app MUST automatically trigger the 5-minute Idle Preview to prepare the monitor for the next players.
+    - **Duplicate Email Prevention**: The system MUST enforce case-insensitive and whitespace-trimmed email deduplication across `addEmail()`, real-time UI validation (`supportingText = "This email address has already been added"`), and match finalization (`onStartRecording`).
+- **Interrupt-Free Email Entry & Waiver Gate**: Typing in the email address field MUST be 100% free of popup interruptions. The Recording Waiver dialog MUST ONLY be prompted when the user taps "START MATCH" or "+ Add Player" if terms have not yet been agreed (`!hasAgreedWaiver`). Once "I AGREE" is tapped, `hasAgreedWaiver` is saved and match recording starts without popup stalls. The waiver text container MUST utilize `verticalScroll` and constrained heights (`heightIn(max = 220.dp)`) to ensure full text legibility without truncation across landscape phone displays.
 - **Z-Index Strategy**: UI must follow a strict layering model:
     1. **LAYER 0 (Floor)**: Background MP4 Player.
     2. **LAYER 1 (Live Feed)**: Camera Preview (RTSP or Internal).
@@ -176,7 +178,8 @@ Key highlights include:
     - **Clock Synchronization**: MUST enforce `-use_wallclock_as_timestamps 1` and `-fflags +igndts+genpts` to ignore jittery source clocks and ensure monotonic frame delivery.
     - **Transport**: Force `-rtsp_transport tcp` and `-err_detect ignore_err` with `-fflags +discardcorrupt` to prevent encoder hangs during Wi-Fi signal drops.
 - **Internal Bitrate Balancing**: Local camera recordings MUST use a **6Mbps** target bitrate to prevent I/O write pressure and ensure hardware stability on mid-range devices.
-- **Smoothness Hardening (Preview)**: All RTSP previews MUST use the **Strict TCP Standard** (`setForceUseRtpTcp(true)`) and a standard User-Agent (`SeenMyPickle/1.0`). This prevents `SETUP 400` negotiation errors common with consumer-grade wireless cameras. Audio MUST be disabled for preview stability.
+- **Smoothness Hardening (Preview)**: All RTSP previews MUST use the **Strict TCP Standard** (`setForceUseRtpTcp(true)`) and a standard User-Agent (`SeenMyPickle/1.0`). This prevents `SETUP 400` negotiation errors common with consumer-grade wireless cameras. Audio MUST be toggleable via `uiState.isPreviewMuted`.
+- **Wi-Fi Camera Live Audio Control**: Live RTSP preview audio MUST respond dynamically to `uiState.isPreviewMuted`. Clicking the Volume button on the main dashboard controls or toggling "Wi-Fi Camera Audio" in `AdminPanel` updates `RtspPreview`'s `exoPlayer.volume` (1f vs 0f) and enables/disables the audio track type dynamically.
 - **RTSP Surface Management**: All RTSP previews MUST use a `TextureView` as the primary rendering surface. This is mandatory to ensure direct access to the `bitmap` for frame capture (Frozen Frame continuity).
 - **Surface Resilience**: Do NOT use fragile view-hierarchy manipulation (e.g., `getChildAt(0)`) to replace `PlayerView` surfaces. Attach `ExoPlayer` directly to the `TextureView` using `setVideoTextureView`.
 - **Snapshot Frequency**: Live snapshots for continuity MUST be captured at a minimum frequency of **1 second** (via `LaunchedEffect`) during active previews.
@@ -241,6 +244,8 @@ Key highlights include:
     - **Rescue Mode**: If hardware-accelerated watermarking produces black frames or fails, the worker must automatically fallback to raw stream delivery using `-c copy -movflags +faststart`.
 - **Local Replay Server**:
     - **Socket Resilience**: The server MUST enable `reuseAddress = true` to prevent `EADDRINUSE` errors during match transitions or app restarts.
+    - **HTTP Range & HEAD Request Support**: `LocalReplayServer` MUST support `HEAD` requests and HTTP Range requests (`206 Partial Content` with `Content-Range: bytes START-END/TOTAL` headers). This is mandatory to allow TV app ExoPlayer to inspect MP4 atoms over LAN streaming without black screen stalls.
+    - **ExoPlayer Audio Track Compatibility**: For HTTP MP4 replay playback, audio track disabling MUST NOT be forced (`setTrackTypeDisabled(TRACK_TYPE_AUDIO, false)`) to ensure ExoPlayer's A/V clock sync renders MP4 video frames instantly without black screen stalls.
 - **Email Communications**:
     - **Branded structure**: All emails must use `multipart/related` MIME to embed the official logo via CID.
     - **Single Notification Flow**: Deliver only one high-impact "Footage Ready" email once the upload is complete. Avoid intermediate processing alerts to reduce user inbox clutter.
@@ -289,6 +294,10 @@ Key highlights include:
     - **Instant Settings Broadcast**: The tablet MUST broadcast settings changes (Court Tag, RTSP URLs) to the cloud immediately to ensure zero-latency TV updates.
     - **Offline Resilience**: MUST display a high-visibility **"TABLET OFFLINE"** alert (zIndex 400+) if the paired tablet is disconnected or powered off. The alert MUST include a **10-second auto-retry countdown** and a focusable **"RETRY NOW"** button.
     - **Sync Visibility**: The TV Admin Panel MUST display the **Last Sync Time** (HH:mm:ss) to provide clear evidence of "live" data connectivity.
+    - **Obscured Feed & Diagnostic Sanitization**: MUST obscure the underlying RTSP feed behind a 90% dark backdrop when Settings/Diagnostics or Replay List dialogs are active. All RTSP URLs displayed in diagnostic views MUST be sanitized via `sanitizeRtspUrl` to mask usernames/passwords.
+    - **LAN Stream Quality Switch**: MUST provide an interactive stream mode setting (`useMainStream`) in the TV Admin Panel allowing administrators to force "Highest Quality (Main Stream)" for high-bandwidth LAN court Wi-Fi or "Low Latency (Sub Stream)".
+    - **Clean TV Pairing Screen**: The pairing interface MUST feature large TV typography (`24.sp` input text), centered logo artwork, high-contrast dark card container (`28.dp` rounded corners, PickleGreen border), and focusable D-Pad controls.
+    - **Unpair Confirmation Warning**: Clicking "PAIR NEW DEVICE" MUST trigger an explicit warning confirmation dialog (`UnpairWarningDialog`) informing the user that proceeding will disconnect the TV and wipe all saved TV app settings (`prefs.edit().clear().apply()`).
     - **Remote-First Interactivity**: ALL TV dashboard controls MUST be focus-aware and navigable via standard D-Pad remote events, utilizing high-contrast pulsing borders for focused states.
     - **Settings Control**: A focusable settings gear MUST be anchored to the **Bottom-Left** corner to allow remote-driven unpairing and re-configuration.
     - **Technical Info Cluster**: The real-time digital clock MUST be anchored to the **Bottom-Right** corner, sitting below match stats to prevent overlap with top-level status banners.

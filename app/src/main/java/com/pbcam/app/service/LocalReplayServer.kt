@@ -29,14 +29,13 @@ object LocalReplayServer {
         }
     }
 
-    private fun resolveRequestedFile(requestLine: String): File? {
-        val uriPath = requestLine.split(" ").getOrNull(1) ?: return currentFile
-        if (uriPath.contains("id=")) {
-            val idStr = uriPath.substringAfter("id=").substringBefore("&")
+    private fun resolveRequestedFile(requestPath: String): File? {
+        if (requestPath.contains("id=")) {
+            val idStr = requestPath.substringAfter("id=").substringBefore("&")
             val id = idStr.toLongOrNull()
-            if (id != null && appContext != null) {
-                val pbApp = appContext as? com.pbcam.app.PBCamApplication
-                val session = pbApp?.recordingRepository?.let { repo ->
+            if (id != null) {
+                val repository = try { com.pbcam.app.PBCamApplication.instance.recordingRepository } catch (_: Exception) { null }
+                val session = repository?.let { repo ->
                     kotlinx.coroutines.runBlocking { repo.getSession(id) }
                 }
                 if (session != null) {
@@ -87,7 +86,7 @@ object LocalReplayServer {
         isRunning = false
         try {
             serverSocket?.close()
-        } catch (e: Exception) {}
+        } catch (_: Exception) {}
         serverSocket = null
         
         executor?.shutdownNow()
@@ -100,58 +99,121 @@ object LocalReplayServer {
         Executors.newSingleThreadExecutor().execute {
             try {
                 val input = client.getInputStream().bufferedReader()
-                val line = input.readLine() ?: return@execute
-                android.util.Log.d(TAG, "Request: $line")
-                
-                if (line.startsWith("GET /status")) {
+                val requestLine = input.readLine() ?: return@execute
+                Log.d(TAG, "Request: $requestLine")
+
+                val headers = mutableMapOf<String, String>()
+                while (true) {
+                    val hLine = input.readLine() ?: break
+                    if (hLine.isBlank()) break
+                    val parts = hLine.split(":", limit = 2)
+                    if (parts.size == 2) {
+                        headers[parts[0].trim().lowercase()] = parts[1].trim()
+                    }
+                }
+
+                val method = requestLine.split(" ").getOrNull(0)?.uppercase() ?: "GET"
+                val path = requestLine.split(" ").getOrNull(1) ?: "/"
+
+                if (path.startsWith("/status")) {
                     val json = statusJsonProvider?.invoke() ?: "{\"isOnline\":true}"
+                    val jsonBytes = json.toByteArray(Charsets.UTF_8)
                     val output = client.getOutputStream()
                     val header = "HTTP/1.1 200 OK\r\n" +
-                            "Content-Type: application/json\r\n" +
-                            "Content-Length: ${json.toByteArray().size}\r\n" +
+                            "Content-Type: application/json; charset=utf-8\r\n" +
+                            "Content-Length: ${jsonBytes.size}\r\n" +
                             "Access-Control-Allow-Origin: *\r\n" +
                             "Connection: close\r\n\r\n"
                     output.write(header.toByteArray())
-                    output.write(json.toByteArray())
+                    if (method == "GET") {
+                        output.write(jsonBytes)
+                    }
                     output.flush()
                     Log.d(TAG, "Served /status JSON")
-                } else if (line.startsWith("GET /replay")) {
-                    val file = resolveRequestedFile(line)
-                    if (file != null && file.exists()) {
-                        val output = client.getOutputStream()
-                        val fis = FileInputStream(file)
+                } else if (path.startsWith("/replay")) {
+                    val file = resolveRequestedFile(path)
+                    if (file != null && file.exists() && file.length() > 0) {
+                        val fileLength = file.length()
+                        val rangeHeader = headers["range"]
                         
-                        val header = "HTTP/1.1 200 OK\r\n" +
-                                "Content-Type: video/mp4\r\n" +
-                                "Content-Length: ${file.length()}\r\n" +
-                                "Accept-Ranges: bytes\r\n" +
-                                "Access-Control-Allow-Origin: *\r\n" +
-                                "Connection: close\r\n\r\n"
-                        
-                        output.write(header.toByteArray())
-                        
-                        val buffer = ByteArray(65536) // 64KB buffer
-                        var read: Int
-                        while (fis.read(buffer).also { read = it } != -1) {
-                            output.write(buffer, 0, read)
+                        var startByte = 0L
+                        var endByte = fileLength - 1L
+                        var isRange = false
+
+                        if (!rangeHeader.isNullOrEmpty() && rangeHeader.startsWith("bytes=")) {
+                            val rangeVal = rangeHeader.substringAfter("bytes=").trim()
+                            val parts = rangeVal.split("-")
+                            startByte = parts.getOrNull(0)?.toLongOrNull() ?: 0L
+                            endByte = parts.getOrNull(1)?.toLongOrNull() ?: (fileLength - 1L)
+                            if (endByte >= fileLength) endByte = fileLength - 1L
+                            if (startByte in 0L..endByte) {
+                                isRange = true
+                            }
                         }
-                        output.flush()
-                        fis.close()
-                        Log.d(TAG, "Served ${file.name} to ${client.inetAddress}")
+
+                        val output = client.getOutputStream()
+                        if (isRange) {
+                            val contentLength = endByte - startByte + 1L
+                            val header = "HTTP/1.1 206 Partial Content\r\n" +
+                                    "Content-Type: video/mp4\r\n" +
+                                    "Content-Length: $contentLength\r\n" +
+                                    "Content-Range: bytes $startByte-$endByte/$fileLength\r\n" +
+                                    "Accept-Ranges: bytes\r\n" +
+                                    "Access-Control-Allow-Origin: *\r\n" +
+                                    "Connection: close\r\n\r\n"
+                            output.write(header.toByteArray())
+
+                            if (method == "GET") {
+                                val fis = FileInputStream(file)
+                                fis.skip(startByte)
+                                val buffer = ByteArray(65536)
+                                var bytesRemaining = contentLength
+                                while (bytesRemaining > 0) {
+                                    val toRead = minOf(buffer.size.toLong(), bytesRemaining).toInt()
+                                    val read = fis.read(buffer, 0, toRead)
+                                    if (read <= 0) break
+                                    output.write(buffer, 0, read)
+                                    bytesRemaining -= read
+                                }
+                                fis.close()
+                            }
+                            output.flush()
+                            Log.d(TAG, "Served 206 Partial Content range $startByte-$endByte/$fileLength for ${file.name}")
+                        } else {
+                            val header = "HTTP/1.1 200 OK\r\n" +
+                                    "Content-Type: video/mp4\r\n" +
+                                    "Content-Length: $fileLength\r\n" +
+                                    "Accept-Ranges: bytes\r\n" +
+                                    "Access-Control-Allow-Origin: *\r\n" +
+                                    "Connection: close\r\n\r\n"
+                            output.write(header.toByteArray())
+
+                            if (method == "GET") {
+                                val fis = FileInputStream(file)
+                                val buffer = ByteArray(65536)
+                                var read: Int
+                                while (fis.read(buffer).also { read = it } != -1) {
+                                    output.write(buffer, 0, read)
+                                }
+                                fis.close()
+                            }
+                            output.flush()
+                            Log.d(TAG, "Served 200 OK full file ${file.name}")
+                        }
                     } else {
-                        Log.e(TAG, "Replay file missing for request: $line")
+                        Log.e(TAG, "Replay file missing for request: $requestLine")
                         val error = "HTTP/1.1 404 Not Found\r\n\r\n"
                         client.getOutputStream().write(error.toByteArray())
                     }
                 } else {
-                    Log.w(TAG, "Forbidden request: $line")
+                    Log.w(TAG, "Forbidden request: $requestLine")
                     val forbidden = "HTTP/1.1 403 Forbidden\r\n\r\n"
                     client.getOutputStream().write(forbidden.toByteArray())
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Client handling error: ${e.message}")
             } finally {
-                try { client.close() } catch (e: Exception) {}
+                try { client.close() } catch (_: Exception) {}
             }
         }
     }

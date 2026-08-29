@@ -18,11 +18,17 @@ class PBCamApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         // Lazy schedule maintenance to prevent startup race
         CoroutineScope(Dispatchers.Main).launch {
             withContext(Dispatchers.IO) {
                 WorkerScheduler.scheduleMaintenance(this@PBCamApplication)
             }
         }
+    }
+
+    companion object {
+        lateinit var instance: PBCamApplication
+            private set
     }
 }
