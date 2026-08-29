@@ -105,6 +105,10 @@ class SettingsStore(context: Context) {
         get() = prefs.getInt(KEY_RETENTION_DAYS, 5)
         set(value) = prefs.edit().putInt(KEY_RETENTION_DAYS, value).apply()
 
+    var localStorageRetentionHours: Int
+        get() = prefs.getInt(KEY_LOCAL_STORAGE_RETENTION_HOURS, 2)
+        set(value) = prefs.edit().putInt(KEY_LOCAL_STORAGE_RETENTION_HOURS, value).apply()
+
     var customWatermarkPath: String?
         get() = prefs.getString(KEY_CUSTOM_WATERMARK_PATH, null)
         set(value) = prefs.edit().putString(KEY_CUSTOM_WATERMARK_PATH, value).apply()
@@ -133,6 +137,7 @@ class SettingsStore(context: Context) {
         private const val KEY_PASSCODE_ATTEMPTS = "passcode_attempts"
         private const val KEY_WATERMARK_POSITION = "watermark_position"
         private const val KEY_RETENTION_DAYS = "retention_days"
+        private const val KEY_LOCAL_STORAGE_RETENTION_HOURS = "local_storage_retention_hours"
         private const val KEY_CUSTOM_WATERMARK_PATH = "custom_watermark_path"
         private const val DEFAULT_RTSP_URL = "rtsp://192.168.1.100:554/stream"
     }

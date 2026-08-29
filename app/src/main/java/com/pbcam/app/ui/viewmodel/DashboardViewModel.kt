@@ -161,6 +161,7 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             delay(500.milliseconds)
             failStuckSessions()
+            purgeLocalVideoFilesOlderThan(settings.localStorageRetentionHours)
             val deviceId = SecurityUtils.getDeviceId(app)
             startPresenceListener(deviceId)
             startPresenceHeartbeat(deviceId) // START PERIODIC HEARTBEAT
@@ -316,7 +317,28 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                 statusMap["courtTag"] = _uiState.value.courtTag.ifBlank { "Court 1" }
                 statusMap["lastReplaySessionId"] = _uiState.value.lastReplaySessionId
                 statusMap["isOnline"] = true // Redundant safety: ensure online during any sync
-                statusMap["localIp"] = com.pbcam.app.service.LocalReplayServer.getLocalIpAddress().orEmpty()
+                val localIp = com.pbcam.app.service.LocalReplayServer.getLocalIpAddress().orEmpty()
+                statusMap["localIp"] = localIp
+                
+                // Broadcast recent 10 sessions for TV Replay List
+                val recentList = _uiState.value.sessions
+                    .filter { s -> s.status == RecordingStatus.COMPLETED || s.status == RecordingStatus.SENDING_EMAIL || s.status == RecordingStatus.UPLOADING }
+                    .take(10)
+                    .map { s ->
+                        val localFileExists = File(s.filename).exists()
+                        val endTime = s.endTime ?: 0L
+                        val durationSec = if (endTime > s.startTime) ((endTime - s.startTime) / 1000L) else 0L
+                        mapOf(
+                            "id" to s.id,
+                            "email" to SecurityUtils.maskEmail(s.targetEmail),
+                            "startTime" to s.startTime,
+                            "duration" to durationSec,
+                            "localUrl" to if (localFileExists && localIp.isNotBlank()) "http://$localIp:8080/replay" else "",
+                            "gDriveUrl" to (s.gDriveUrl ?: ""),
+                            "status" to s.status.name
+                        )
+                    }
+                statusMap["recent_sessions"] = recentList
                 
                 // Add local URL if server is running
                 val localUrl = com.pbcam.app.service.LocalReplayServer.getLocalUrl(app)
@@ -953,6 +975,26 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
     fun logoutAdmin() {
         adminSessionJob?.cancel()
         _uiState.update { it.copy(isAdminAuthorized = false, adminSessionSecondsLeft = 0) }
+    }
+
+    fun purgeLocalVideoFilesOlderThan(hours: Int = 2) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val localCutoff = System.currentTimeMillis() - java.util.concurrent.TimeUnit.HOURS.toMillis(hours.toLong())
+            val recordingsDir = com.pbcam.app.service.RecordingService.getRecordingsDir(app)
+            if (recordingsDir.exists()) {
+                recordingsDir.listFiles()?.forEach { file ->
+                    if (file.isFile && (file.name.endsWith(".mp4") || file.name.endsWith(".ts"))) {
+                        val session = repository.getSessionByFilename(file.absolutePath)
+                        val isUploaded = session?.status == RecordingStatus.COMPLETED
+                        val isOldLocal = file.lastModified() < localCutoff || (session != null && (System.currentTimeMillis() - session.startTime) > java.util.concurrent.TimeUnit.HOURS.toMillis(hours.toLong()))
+                        
+                        if (isOldLocal && (isUploaded || session == null)) {
+                            file.delete()
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fun clearFailedState() {

@@ -8,11 +8,15 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -68,8 +72,13 @@ fun TvDashboardScreen(viewModel: TvDashboardViewModel = viewModel()) {
             // Layer 2: Top Status Banner (Detached)
             StatusBanner(uiState)
 
-            // Layer 2.5: Interactive Settings / Admin (Bottom Left)
-            SettingsButton(onOpen = { viewModel.toggleSettings(true) })
+            // Layer 2.5: Interactive Bottom Control Cluster (Replays & Admin)
+            BottomControlCluster(uiState, viewModel)
+
+            // --- REPLAY LIST DIALOG ---
+            if (uiState.isReplayListOpen) {
+                TvReplayListDialog(uiState, viewModel)
+            }
 
             // Layer 2.6: Replay Dismiss (Floating Hint)
             if (uiState.isAutoReplayActive && uiState.status == "IDLE" && !uiState.showReplayCompletePrompt && !uiState.isReplayLoading) {
@@ -151,32 +160,190 @@ fun TvDashboardScreen(viewModel: TvDashboardViewModel = viewModel()) {
 }
 
 @Composable
-fun SettingsButton(onOpen: () -> Unit) {
-    var isFocused by remember { mutableStateOf(false) }
-    
+fun BottomControlCluster(uiState: TvUiState, viewModel: TvDashboardViewModel) {
+    var isReplayFocused by remember { mutableStateOf(false) }
+    var isSettingsFocused by remember { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .padding(32.dp),
         contentAlignment = Alignment.BottomStart
     ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            // REPLAY LIST LAUNCHER BUTTON
+            Surface(
+                onClick = { viewModel.toggleReplayList(true) },
+                color = if (isReplayFocused) Color(0xFF99FF00) else Color.Black.copy(alpha = 0.6f),
+                shape = CircleShape,
+                modifier = Modifier
+                    .size(64.dp)
+                    .onFocusChanged { isReplayFocused = it.isFocused }
+                    .shadow(elevation = 12.dp, shape = CircleShape)
+                    .border(2.dp, if (isReplayFocused) Color.White else Color.Transparent, CircleShape),
+                contentColor = if (isReplayFocused) Color.Black else Color.White
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.VideoLibrary,
+                        contentDescription = "Recorded Plays Replay List",
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            }
+
+            // SETTINGS BUTTON
+            Surface(
+                onClick = { viewModel.toggleSettings(true) },
+                color = if (isSettingsFocused) Color(0xFF99FF00) else Color.Black.copy(alpha = 0.6f),
+                shape = CircleShape,
+                modifier = Modifier
+                    .size(64.dp)
+                    .onFocusChanged { isSettingsFocused = it.isFocused }
+                    .shadow(elevation = 12.dp, shape = CircleShape)
+                    .border(2.dp, if (isSettingsFocused) Color.White else Color.Transparent, CircleShape),
+                contentColor = if (isSettingsFocused) Color.Black else Color.White
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = "Admin",
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TvReplayListDialog(uiState: TvUiState, viewModel: TvDashboardViewModel) {
+    val focusRequester = remember { FocusRequester() }
+    val timeSdf = SimpleDateFormat("MMM dd, h:mm a", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("Asia/Manila")
+    }
+
+    Dialog(onDismissRequest = { viewModel.toggleReplayList(false) }) {
         Surface(
-            onClick = onOpen,
-            color = if (isFocused) Color(0xFF99FF00) else Color.Black.copy(alpha = 0.5f),
-            shape = CircleShape,
+            color = Color(0xFF1E1E1E),
+            shape = RoundedCornerShape(24.dp),
             modifier = Modifier
-                .size(64.dp)
-                .onFocusChanged { isFocused = it.isFocused }
-                .shadow(elevation = 8.dp, shape = CircleShape)
-                .border(2.dp, if (isFocused) Color.White else Color.Transparent, CircleShape),
-            contentColor = if (isFocused) Color.Black else Color.White
+                .width(680.dp)
+                .heightIn(max = 520.dp)
+                .zIndex(450f),
+            border = BorderStroke(2.dp, Color(0xFF99FF00))
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    Icons.Default.Settings,
-                    contentDescription = "Admin",
-                    modifier = Modifier.size(32.dp)
+            Column(modifier = Modifier.padding(28.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Icon(Icons.Default.VideoLibrary, contentDescription = null, tint = Color(0xFF99FF00), modifier = Modifier.size(28.dp))
+                        Text("RECORDED PLAYS", color = Color(0xFF99FF00), fontSize = 24.sp, fontWeight = FontWeight.Black)
+                    }
+                    IconButton(onClick = { viewModel.toggleReplayList(false) }) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White.copy(alpha = 0.7f))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (uiState.recentSessions.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                        Text("No recorded plays available.", color = Color.White.copy(alpha = 0.6f), fontSize = 18.sp)
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth().weight(1f)
+                    ) {
+                        itemsIndexed(uiState.recentSessions) { index, session ->
+                            ReplayItemCard(
+                                session = session,
+                                timeStr = if (session.startTime > 0L) timeSdf.format(Date(session.startTime)) else "Recent Match",
+                                focusRequester = if (index == 0) focusRequester else null,
+                                onPlay = { viewModel.playSelectedSession(session) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        try { focusRequester.requestFocus() } catch (_: Exception) {}
+    }
+}
+
+@Composable
+fun ReplayItemCard(
+    session: TvReplaySession,
+    timeStr: String,
+    focusRequester: FocusRequester?,
+    onPlay: () -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+
+    Surface(
+        onClick = onPlay,
+        color = if (isFocused) Color(0xFF99FF00) else Color.White.copy(alpha = 0.08f),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(2.dp, if (isFocused) Color.White else Color.Transparent),
+        modifier = Modifier
+            .fillMaxWidth()
+            .let { if (focusRequester != null) it.focusRequester(focusRequester) else it }
+            .onFocusChanged { isFocused = it.isFocused }
+            .shadow(elevation = if (isFocused) 12.dp else 2.dp, shape = RoundedCornerShape(16.dp)),
+        contentColor = if (isFocused) Color.Black else Color.White
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = session.email.ifBlank { "Court Player" },
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isFocused) Color.Black else Color.White
                 )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(timeStr, fontSize = 13.sp, color = if (isFocused) Color.Black.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.6f))
+                    if (session.duration > 0L) {
+                        Text("•  ${formatDuration(session.duration)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (isFocused) Color.Black else Color(0xFF99FF00))
+                    }
+                }
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(
+                    color = if (isFocused) Color.Black else Color(0xFF99FF00),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = "Play Replay",
+                            tint = if (isFocused) Color(0xFF99FF00) else Color.Black,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            "PLAY",
+                            color = if (isFocused) Color(0xFF99FF00) else Color.Black,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
             }
         }
     }

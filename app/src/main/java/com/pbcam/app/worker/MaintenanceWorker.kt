@@ -23,22 +23,24 @@ class MaintenanceWorker(
         // 1. Purge Old Session Logs (Sync with Drive retention)
         repository.purgeOldSessions(retentionDays)
 
-        // 2. Clean local files (Hardened with status check)
+        // 2. Clean local video files (2-Hour Retention Policy for court rentals)
+        val localStorageRetentionHours = app.settingsStore.localStorageRetentionHours
+        val localCutoff = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(localStorageRetentionHours.toLong())
+        val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(retentionDays.toLong())
+        val safetyCutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(14)
+
         val recordingsDir = RecordingService.getRecordingsDir(applicationContext)
         if (recordingsDir.exists()) {
-            val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(retentionDays.toLong())
-            val safetyCutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(14)
-            
             recordingsDir.listFiles()?.forEach { file ->
                 if (file.isFile) {
                     val isOld = file.lastModified() < cutoff
                     val isExtraOld = file.lastModified() < safetyCutoff
-                    
-                    // Logic: Delete if COMPLETED and old, OR if EXTRA old (safety net)
                     val session = repository.getSessionByFilename(file.absolutePath)
                     val isUploaded = session?.status == RecordingStatus.COMPLETED
-                    
-                    if (isExtraOld || (isOld && isUploaded)) {
+                    val isOldLocal = file.lastModified() < localCutoff || (session != null && (System.currentTimeMillis() - session.startTime) > TimeUnit.HOURS.toMillis(localStorageRetentionHours.toLong()))
+
+                    // Logic: Delete if older than 2 hours and uploaded, OR if extra old (safety net)
+                    if (isExtraOld || (isOldLocal && isUploaded) || (isOld && isUploaded)) {
                         file.delete()
                     }
                 }

@@ -20,6 +20,16 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
+data class TvReplaySession(
+    val id: Long = -1L,
+    val email: String = "",
+    val startTime: Long = 0L,
+    val duration: Long = 0L,
+    val localUrl: String = "",
+    val gDriveUrl: String = "",
+    val status: String = "COMPLETED"
+)
+
 data class TvUiState(
     val pairedDeviceId: String = "",
     val status: String = "IDLE", // IDLE, RECORDING, PAUSED
@@ -49,7 +59,10 @@ data class TvUiState(
     val syncChannel: String = "Cloud",
     val showReplayAvailableBanner: Boolean = false,
     val replayBannerCountdown: Int = 30,
-    val pendingReplaySessionId: Long = -1L
+    val pendingReplaySessionId: Long = -1L,
+    val recentSessions: List<TvReplaySession> = emptyList(),
+    val isReplayListOpen: Boolean = false,
+    val activeReplaySession: TvReplaySession? = null
 )
 
 class TvDashboardViewModel(application: Application) : AndroidViewModel(application) {
@@ -132,6 +145,30 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
 
     fun toggleSettings(open: Boolean) {
         _uiState.update { it.copy(isSettingsOpen = open) }
+    }
+
+    fun toggleReplayList(open: Boolean) {
+        _uiState.update { it.copy(isReplayListOpen = open) }
+    }
+
+    fun playSelectedSession(session: TvReplaySession) {
+        replayBannerJob?.cancel()
+        _uiState.update { 
+            it.copy(
+                isReplayListOpen = false,
+                showReplayAvailableBanner = false,
+                isReplayLoading = true,
+                showReplayCompletePrompt = false,
+                isAutoReplayActive = true,
+                activeReplaySession = session,
+                localReplayUrl = session.localUrl.ifBlank { it.localReplayUrl },
+                lastRecordingUrl = session.gDriveUrl.ifBlank { it.lastRecordingUrl }
+            ) 
+        }
+        viewModelScope.launch {
+            delay(2000)
+            _uiState.update { it.copy(isReplayLoading = false) }
+        }
     }
 
     private var replayCountdownJob: Job? = null
@@ -268,6 +305,28 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
 
                     updateDebug("Update received at $lastSyncTime")
 
+                    val recentSessions = snapshot.child("recent_sessions").children.mapNotNull { s ->
+                        val id = s.child("id").getValue(Long::class.java) ?: -1L
+                        val email = s.child("email").getValue(String::class.java) ?: ""
+                        val startTime = s.child("startTime").getValue(Long::class.java) ?: 0L
+                        val dur = s.child("duration").getValue(Long::class.java) ?: 0L
+                        val lUrl = s.child("localUrl").getValue(String::class.java) ?: ""
+                        val gUrl = s.child("gDriveUrl").getValue(String::class.java) ?: ""
+                        val sessionStatus = s.child("status").getValue(String::class.java) ?: "COMPLETED"
+                        
+                        if (id > 0L) {
+                            TvReplaySession(
+                                id = id,
+                                email = email,
+                                startTime = startTime,
+                                duration = dur,
+                                localUrl = lUrl,
+                                gDriveUrl = gUrl,
+                                status = sessionStatus
+                            )
+                        } else null
+                    }
+
                     _uiState.update {
                         it.copy(
                             status = status,
@@ -281,6 +340,7 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
                             localIp = localIp,
                             isTabletOnline = isOnline,
                             lastReplaySessionId = remoteReplayId,
+                            recentSessions = if (recentSessions.isNotEmpty()) recentSessions else it.recentSessions,
                             isAutoReplayActive = if (status == "RECORDING") false else it.isAutoReplayActive,
                             showReplayCompletePrompt = if (status == "RECORDING") false else it.showReplayCompletePrompt,
                             lastUpdateTimestamp = localReceiveTime,
