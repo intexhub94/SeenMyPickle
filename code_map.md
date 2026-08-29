@@ -65,16 +65,19 @@ This document serves as the master logical map for the SeenMyPickle Android proj
 - **App ID**: `com.pbcam.tv` (Ensures unique deployment identity).
 - **`MainActivity.kt`**: Entry point optimized for Leanback; initializes the `TvDashboardScreen`.
 - **`TvDashboardViewModel.kt`**: 
-    - **Cloud Bridge**: Persistent listener on `live_status/{pairedId}`.
-    - **Logic**: Orchestrates transitions between Live Feed, Local Replay, and Cloud Replay; monitors tablet online presence with an **automated 10s retry engine**.
-    - **Observability Audit**: Displays "Last Sync Time" to help troubleshoot connection jitter.
+    - **Hybrid Sync Engine**: Combines **Local LAN HTTP Probing** (`http://{tabletIp}:8080/status`) every 3 seconds for sub-10ms court Wi-Fi synchronization with single-instance **Firebase Realtime Database** event listeners for cloud fallback.
+    - **Single-Clock Watchdog**: Evaluates staleness using local TV timestamps (`System.currentTimeMillis() - lastLocalReceiveTime`) to eliminate inter-device clock skew false disconnections.
+    - **Startup Barrier**: Uses `isInitialSyncPending` to hold splash screen active until initial WebSocket connection and snapshot delivery complete, eliminating cold launch disconnect flashes.
     - **Replay State Machine**: Manages the multi-stage replay lifecycle: `LOADING` (Animation) -> `PLAYING` -> `COMPLETE` (Prompt with 20s countdown).
+- **`TvNetworkManager.kt`**:
+    - **LAN Prober**: Performs sub-10ms HTTP GET probes to `http://{tabletIp}:8080/status` for zero-latency local court Wi-Fi status synchronization.
 - **`TvDashboardScreen.kt`**: 
     - **VideoPlayerLayer**: High-performance Media3 wrapper prioritizing **Sub-Stream (stream2)**; synchronized to auto-stop during tablet downtime or active replays. Implements **Auto-Negotiation (UDP/TCP)** to prevent connection conflicts with the Tablet's recording stream.
     - **BrandingOverlay**: Renders official lower-center logo/tagline.
     - **DigitalClockOverlay**: Renders the digital clock anchored to the **Bottom-Right**.
     - **SettingsButton**: Renders the D-Pad focusable gear icon anchored to the **Bottom-Left**.
-    - **AdminPanelDialog**: Renders the comprehensive technical diagnostic dashboard and pairing management.
+    - **AdminPanelDialog**: Renders comprehensive technical diagnostic dashboard with live `Sync Status` (Local LAN vs Cloud).
+    - **PairingScreen**: Displays clean D-Pad input box with real-time status strings (`Sync OK`, `Node Missing`, `Permission denied`) under the PAIR NOW button.
     - **Diagnostic/Alert Layer**: Renders high-priority brand-aligned "TABLET OFFLINE" popups with auto-retry countdowns and **Emergency Pairing** recovery.
     - **Status Banner**: Professional detached pulsing bubbles for high-visibility public view (Top).
 

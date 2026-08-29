@@ -192,11 +192,11 @@ class ConvertWorker(context: Context, params: WorkerParameters) : CoroutineWorke
 
             val pos = app.settingsStore.watermarkPosition
             val watermarkFilter = when (pos) {
-                WatermarkPosition.TOP_LEFT -> "overlay=20:20:format=yuv420:shortest=1,fps=30,setpts=PTS-STARTPTS[v]"
-                WatermarkPosition.TOP_RIGHT -> "overlay=main_w-overlay_w-20:20:format=yuv420:shortest=1,fps=30,setpts=PTS-STARTPTS[v]"
-                WatermarkPosition.BOTTOM_LEFT -> "overlay=20:main_h-overlay_h-20:format=yuv420:shortest=1,fps=30,setpts=PTS-STARTPTS[v]"
-                WatermarkPosition.BOTTOM_RIGHT -> "overlay=main_w-overlay_w-20:main_h-overlay_h-20:format=yuv420:shortest=1,fps=30,setpts=PTS-STARTPTS[v]"
-                else -> "overlay=main_w-overlay_w-20:main_h-overlay_h-20:format=yuv420:shortest=1,fps=30,setpts=PTS-STARTPTS[v]"
+                WatermarkPosition.TOP_LEFT -> "[0:v][1:v]overlay=20:20:format=yuv420:shortest=1,fps=30,setpts=PTS-STARTPTS[v]"
+                WatermarkPosition.TOP_RIGHT -> "[0:v][1:v]overlay=main_w-overlay_w-20:20:format=yuv420:shortest=1,fps=30,setpts=PTS-STARTPTS[v]"
+                WatermarkPosition.BOTTOM_LEFT -> "[0:v][1:v]overlay=20:main_h-overlay_h-20:format=yuv420:shortest=1,fps=30,setpts=PTS-STARTPTS[v]"
+                WatermarkPosition.BOTTOM_RIGHT -> "[0:v][1:v]overlay=main_w-overlay_w-20:main_h-overlay_h-20:format=yuv420:shortest=1,fps=30,setpts=PTS-STARTPTS[v]"
+                else -> "[0:v][1:v]overlay=main_w-overlay_w-20:main_h-overlay_h-20:format=yuv420:shortest=1,fps=30,setpts=PTS-STARTPTS[v]"
             }
             
             val preScaleCmd = "-i \"${watermarkFile.absolutePath}\" -vf \"scale=iw*0.15:-1\" -y \"${scaledLogo.absolutePath}\""

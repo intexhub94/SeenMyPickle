@@ -348,12 +348,16 @@ class RecordingService : LifecycleService() {
 
             val partFile = File(getRecordingsDir(this), "${descriptiveFileName.replace(".mp4", "")}_part${currentPartIndex}.ts")
             
-            // STABILIZED RTSP COMMAND (Code Bible 3.5 baseline)
-            // Simplified to core flags to ensure handshake success.
+            val isLocalLan = rtspUrl.contains("192.168.") || rtspUrl.contains("10.") || rtspUrl.contains("172.")
+            val bufferSize = if (isLocalLan) 26214400 else 52428800 // 25MB for LAN, 50MB for WAN/Wi-Fi
+            
+            // FULL WIRELESS RESILIENCE PROTOCOL (Code Bible 3.5)
             val cmd = "-rtsp_transport tcp -timeout 15000000 " +
+                      "-buffer_size $bufferSize -reorder_queue_size 1024 " +
+                      "-use_wallclock_as_timestamps 1 -fflags +igndts+genpts+discardcorrupt -err_detect ignore_err " +
                       "-i \"$rtspUrl\" -map 0:v -map 0:a? -c copy -y \"${partFile.absolutePath}\""
             
-            android.util.Log.d("RecordingService", "Executing simplified RTSP command: ${SecurityUtils.sanitizeLogs(cmd)}")
+            android.util.Log.d("RecordingService", "Executing Wireless Resilience RTSP command: ${SecurityUtils.sanitizeLogs(cmd)}")
 
             val startTime = System.currentTimeMillis()
             val session = com.arthenica.ffmpegkit.FFmpegKit.executeAsync(cmd) { s ->

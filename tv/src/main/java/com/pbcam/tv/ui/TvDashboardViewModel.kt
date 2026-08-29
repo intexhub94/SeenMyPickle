@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 data class TvUiState(
     val pairedDeviceId: String = "",
@@ -45,7 +46,10 @@ data class TvUiState(
     val replayPromptCountdown: Int = 20,
     val isInitialSyncPending: Boolean = true,
     val localIp: String = "",
-    val syncChannel: String = "Cloud"
+    val syncChannel: String = "Cloud",
+    val showReplayAvailableBanner: Boolean = false,
+    val replayBannerCountdown: Int = 30,
+    val pendingReplaySessionId: Long = -1L
 )
 
 class TvDashboardViewModel(application: Application) : AndroidViewModel(application) {
@@ -172,6 +176,42 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
         _uiState.update { it.copy(isAutoReplayActive = false, showReplayCompletePrompt = false) }
     }
 
+    private var replayBannerJob: Job? = null
+
+    fun acceptReplay() {
+        replayBannerJob?.cancel()
+        _uiState.update { 
+            it.copy(
+                showReplayAvailableBanner = false,
+                isReplayLoading = true,
+                showReplayCompletePrompt = false,
+                isAutoReplayActive = true
+            ) 
+        }
+        viewModelScope.launch {
+            delay(2000) // Replay loading transition duration
+            _uiState.update { it.copy(isReplayLoading = false) }
+        }
+    }
+
+    fun dismissReplayBanner() {
+        replayBannerJob?.cancel()
+        _uiState.update { it.copy(showReplayAvailableBanner = false) }
+    }
+
+    private fun startReplayBannerCountdown() {
+        replayBannerJob?.cancel()
+        replayBannerJob = viewModelScope.launch {
+            while (_uiState.value.replayBannerCountdown > 0 && _uiState.value.showReplayAvailableBanner) {
+                delay(1000)
+                _uiState.update { it.copy(replayBannerCountdown = it.replayBannerCountdown - 1) }
+            }
+            if (_uiState.value.showReplayAvailableBanner) {
+                dismissReplayBanner()
+            }
+        }
+    }
+
     fun triggerRetry() {
         retryJob?.cancel()
         _uiState.update { it.copy(retryCountdown = 10) }
@@ -208,16 +248,22 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
                     val isOnline = rawIsOnline ?: hasDataNode
 
                     val remoteReplayId: Long = snapshot.child("lastReplaySessionId").getValue(Long::class.java) ?: -1L
-                    val lastSyncTime = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(localReceiveTime))
+                    val lastSyncTime = SimpleDateFormat("HH:mm:ss", Locale.US).apply {
+                        timeZone = TimeZone.getTimeZone("Asia/Manila")
+                    }.format(Date(localReceiveTime))
 
-                    val shouldTriggerReplay = remoteReplayId > 0L && remoteReplayId != _uiState.value.lastReplaySessionId && status == "IDLE"
+                    val isFirstSync = _uiState.value.lastReplaySessionId < 0L || _uiState.value.isInitialSyncPending
+                    val shouldNotifyReplay = !isFirstSync && remoteReplayId > 0L && remoteReplayId != _uiState.value.lastReplaySessionId && status == "IDLE"
 
-                    if (shouldTriggerReplay) {
-                        viewModelScope.launch {
-                            _uiState.update { it.copy(isReplayLoading = true, showReplayCompletePrompt = false) }
-                            delay(2000)
-                            _uiState.update { it.copy(isReplayLoading = false) }
+                    if (shouldNotifyReplay) {
+                        _uiState.update { 
+                            it.copy(
+                                showReplayAvailableBanner = true,
+                                replayBannerCountdown = 30,
+                                pendingReplaySessionId = remoteReplayId
+                            ) 
                         }
+                        startReplayBannerCountdown()
                     }
 
                     updateDebug("Update received at $lastSyncTime")
@@ -235,7 +281,7 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
                             localIp = localIp,
                             isTabletOnline = isOnline,
                             lastReplaySessionId = remoteReplayId,
-                            isAutoReplayActive = if (status == "RECORDING") false else if (shouldTriggerReplay) true else it.isAutoReplayActive,
+                            isAutoReplayActive = if (status == "RECORDING") false else it.isAutoReplayActive,
                             showReplayCompletePrompt = if (status == "RECORDING") false else it.showReplayCompletePrompt,
                             lastUpdateTimestamp = localReceiveTime,
                             isInitialSyncPending = false,

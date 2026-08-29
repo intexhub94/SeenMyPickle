@@ -275,8 +275,14 @@ Key highlights include:
 - **Maintenance**: Include a manual "Storage Cleanup" trigger and per-session deletion icons (Trash icon) in the History list. Deleting a session must trigger automatic physical file removal.
 - **TV Supplementary Experience (PickleView TV)**:
     - **Architecture**: A silent "Listener" module (`:tv`) with App ID `com.pbcam.tv`.
-    - **Continuous Sub-Stream**: MUST utilize the camera's **Sub Stream (stream2)** for 24/7 continuous monitoring to optimize bandwidth and TV CPU utilization.
-    - **Tablet Presence Heartbeat**: MUST implement active real-time detection using a **10-second Live Heartbeat** from the Tablet to Firebase. The Tablet explicitly forces `isOnline = true` and triggers a data sync (`syncLiveStatusToCloud`) every 10 seconds to overcome emulator/network jitter.
+    - **Hybrid Connection Engine**: MUST combine **Local LAN HTTP Probing** (`http://{tabletIp}:8080/status`) every 3 seconds for sub-10ms court Wi-Fi synchronization with single-instance **Firebase Realtime Database** event listeners for cloud fallback.
+    - **Single-Clock Staleness Tracking**: Watchdog evaluations MUST evaluate staleness using ONLY local TV receive timestamps (`System.currentTimeMillis() - lastLocalReceiveTime`) to avoid inter-device clock skew false alarms.
+    - **Single-Instance Listener Lifecycle**: MUST maintain exactly one active Firebase event listener per paired device ID without periodic re-subscription loops.
+    - **Startup Sync Barrier**: TV splash screen MUST wait for initial WebSocket connection handshake and snapshot delivery (`isInitialSyncPending == false`) before fading out to eliminate cold-launch disconnect flashes.
+    - **On-Screen Pairing Info & Diagnostics**:
+        - Tapping `TV PAIRING ID` in phone header MUST open interactive **TV Pairing & Cloud Sync Info** dialog showing Device ID, Cloud Sync Status, Error, and Local IP.
+        - TV `PairingScreen` MUST display live status strings (`Sync OK`, `Node Missing`, `Permission denied`) under the PAIR NOW button.
+    - **Tablet Presence Heartbeat**: MUST implement active real-time detection using a **3-second Live Heartbeat** from the Tablet to Firebase. The Tablet explicitly forces `isOnline = true` and triggers a data sync (`syncLiveStatusToCloud`) every 3 seconds.
     - **Atomic Status Sync**: The tablet MUST use `updateChildren()` for cloud synchronization to preserve the `isOnline` presence flag. Presence listeners MUST be extracted from the main sync loop to prevent redundant overhead.
     - **Instant Settings Broadcast**: The tablet MUST broadcast settings changes (Court Tag, RTSP URLs) to the cloud immediately to ensure zero-latency TV updates.
     - **Offline Resilience**: MUST display a high-visibility **"TABLET OFFLINE"** alert (zIndex 400+) if the paired tablet is disconnected or powered off. The alert MUST include a **10-second auto-retry countdown** and a focusable **"RETRY NOW"** button.

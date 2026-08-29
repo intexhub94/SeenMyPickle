@@ -1,7 +1,9 @@
 package com.pbcam.tv.ui
 
 import androidx.annotation.OptIn
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -94,6 +97,16 @@ fun TvDashboardScreen(viewModel: TvDashboardViewModel = viewModel()) {
                 ReplayLoadingOverlay()
             }
 
+            // --- REPLAY AVAILABLE BANNER NOTIFICATION WITH SLIDE-IN ANIMATION ---
+            AnimatedVisibility(
+                visible = uiState.showReplayAvailableBanner && uiState.status == "IDLE" && !uiState.isAutoReplayActive,
+                enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+                modifier = Modifier.align(Alignment.TopCenter).zIndex(350f)
+            ) {
+                ReplayAvailableBanner(uiState, viewModel)
+            }
+
             // --- REPLAY COMPLETE PROMPT ---
             if (uiState.showReplayCompletePrompt) {
                 ReplayCompleteOverlay(uiState, viewModel)
@@ -172,7 +185,9 @@ fun SettingsButton(onOpen: () -> Unit) {
 @Composable
 fun AdminPanelDialog(uiState: TvUiState, onDismiss: () -> Unit, onUnpair: () -> Unit) {
     val focusRequester = remember { FocusRequester() }
-    val sdf = SimpleDateFormat("HH:mm:ss", Locale.US)
+    val sdf = SimpleDateFormat("HH:mm:ss", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("Asia/Manila")
+    }
     
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -256,7 +271,9 @@ fun DigitalClockOverlay() {
 
     var currentTime by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
-        val sdf = SimpleDateFormat("h:mm a", Locale.US)
+        val sdf = SimpleDateFormat("h:mm a", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("Asia/Manila")
+        }
         while(true) {
             currentTime = sdf.format(Date())
             delay(10000)
@@ -865,6 +882,88 @@ fun ReplayLoadingOverlay() {
                 letterSpacing = 2.sp
             )
         }
+    }
+}
+
+@Composable
+fun ReplayAvailableBanner(uiState: TvUiState, viewModel: TvDashboardViewModel) {
+    val focusRequester = remember { FocusRequester() }
+    var isFocused by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 90.dp),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        Surface(
+            onClick = { viewModel.acceptReplay() },
+            color = if (isFocused) Color(0xFF99FF00) else Color.Black.copy(alpha = 0.85f),
+            shape = RoundedCornerShape(20.dp),
+            border = BorderStroke(2.dp, if (isFocused) Color.White else Color(0xFF99FF00)),
+            modifier = Modifier
+                .focusRequester(focusRequester)
+                .onFocusChanged { isFocused = it.isFocused }
+                .shadow(elevation = 16.dp, shape = RoundedCornerShape(20.dp)),
+            contentColor = if (isFocused) Color.Black else Color.White
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    "🎬", 
+                    fontSize = 24.sp
+                )
+                
+                Column {
+                    Text(
+                        "MATCH REPLAY AVAILABLE",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 18.sp,
+                        color = if (isFocused) Color.Black else Color(0xFF99FF00)
+                    )
+                    Text(
+                        "Press OK on remote to watch",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isFocused) Color.Black.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.8f)
+                    )
+                }
+
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(if (isFocused) Color.Black else Color(0xFF99FF00))
+                ) {
+                    Text(
+                        "${uiState.replayBannerCountdown}",
+                        color = if (isFocused) Color(0xFF99FF00) else Color.Black,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 14.sp
+                    )
+                }
+
+                IconButton(
+                    onClick = { viewModel.dismissReplayBanner() },
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Dismiss Replay Notification",
+                        tint = if (isFocused) Color.Black else Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
     }
 }
 
