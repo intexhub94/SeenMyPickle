@@ -23,6 +23,7 @@
         android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
+            android:colorMode="hdr"
             android:exported="true"
             android:screenOrientation="landscape">
             <intent-filter>

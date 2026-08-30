@@ -63,7 +63,9 @@ data class TvUiState(
     val recentSessions: List<TvReplaySession> = emptyList(),
     val isReplayListOpen: Boolean = false,
     val activeReplaySession: TvReplaySession? = null,
-    val useMainStream: Boolean = false
+    val useMainStream: Boolean = false,
+    val useHdrMode: Boolean = false,
+    val isHdrSupported: Boolean = false
 )
 
 class TvDashboardViewModel(application: Application) : AndroidViewModel(application) {
@@ -80,6 +82,7 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
 
     init {
         checkFirebaseConnection()
+        checkHdrCapabilities(application)
         
         // --- STARTUP SPLASH DELAY & INITIAL SYNC WAIT ---
         viewModelScope.launch {
@@ -101,6 +104,30 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
             pairDevice(savedId)
         } else {
             updateDebug("Waiting for pairing...")
+        }
+    }
+
+    private fun checkHdrCapabilities(context: Context) {
+        val isSupported = try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as? android.hardware.display.DisplayManager
+                val defaultDisplay = displayManager?.getDisplay(android.view.Display.DEFAULT_DISPLAY)
+                val hdrTypes = defaultDisplay?.hdrCapabilities?.supportedHdrTypes ?: intArrayOf()
+                hdrTypes.isNotEmpty()
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("TvDashboardViewModel", "Failed to query HDR capabilities", e)
+            false
+        }
+
+        val savedUseHdr = prefs.getBoolean("use_hdr_mode", false)
+        _uiState.update { 
+            it.copy(
+                isHdrSupported = isSupported,
+                useHdrMode = savedUseHdr && isSupported
+            ) 
         }
     }
 
@@ -156,6 +183,12 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
         val newValue = !_uiState.value.useMainStream
         prefs.edit().putBoolean("use_main_stream", newValue).apply()
         _uiState.update { it.copy(useMainStream = newValue) }
+    }
+
+    fun toggleHdrMode() {
+        val newValue = !_uiState.value.useHdrMode
+        prefs.edit().putBoolean("use_hdr_mode", newValue).apply()
+        _uiState.update { it.copy(useHdrMode = newValue) }
     }
 
     fun toggleReplayList(open: Boolean) {

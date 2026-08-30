@@ -2896,3 +2896,47 @@ Strictly follows the rules in `ai_workflow_rules.md`.
 - **Context Sufficiency**: Yes.
 - **Code Bible/Map Updated**: Pending user approval.
 
+---
+
+## 2026-08-30: TV App UI Enhancements (Shutdown Button, Replay Controls & Clean View)
+- **User Request**:
+    1. Dedicated shutdown icon for the TV app.
+    2. Remove dashboard buttons during video replays.
+    3. Make replay dismiss/close control visible, professional, and positioned on the left.
+- **Technical Resolution**: 
+    1. **Dedicated Shutdown Control**: Added Power/Exit button (`Icons.Default.PowerSettingsNew`) to `BottomControlCluster` and `AdminPanelDialog`. Implemented `ExitAppDialog` asking "EXIT APPLICATION?" with focus-aware D-Pad options calling `(context as? Activity)?.finishAffinity()`.
+    2. **Clean Replay View**: Gated `BottomControlCluster` and `StatusBanner` with `if (!uiState.isAutoReplayActive)` so all non-replay control buttons vanish during video replay playback.
+    3. **Professional Left-Aligned Replay Dismiss**: Added `ReplayDismissOverlay` at `Alignment.TopStart` (Top-Left, 32dp padding) featuring an "INSTANT REPLAY" status badge + focusable "EXIT REPLAY" button with close icon and PickleGreen focus border. Added `BackHandler(enabled = uiState.isAutoReplayActive)` to exit replay via TV remote Back key.
+- **Impact on Golden Build**: Enhances Android TV user experience and D-Pad remote usability while maintaining 100% video playback and network synchronization stability.
+- **Context Sufficiency**: Yes.
+- **Code Bible/Map Updated**: Pending user approval.
+
+---
+
+## 2026-08-30: TV App Replay Seek Slider & Playback Status Overlay
+- **User Request**: Add an actual player seek slider to the TV app during video replays so users can track video progress and know when the video has stopped playing.
+- **Technical Resolution**: 
+    1. **Interactive Seek Slider**: Implemented `ReplaySeekBarOverlay` in `TvDashboardScreen.kt`, running a 250ms ticker loop querying `exoPlayer.currentPosition` and `exoPlayer.duration`.
+    2. **Real-time Metrics**: Displays live timestamp counters (`01:23 / 05:00`) and a styled progress bar with a PickleGreen head.
+    3. **D-Pad Seek Controls**: Added `onKeyEvent` handling for D-Pad Left / Right remote keys (`DPAD_LEFT` / `DPAD_RIGHT`) allowing viewers to skip backward/forward by 5-second intervals.
+    4. **Playback State Clarity**: Displays prominent status badges: **"▶ PLAYING REPLAY"**, **"⏸ PAUSED"**, and **"⏹ REPLAY FINISHED"** when playback completes or stops, removing ambiguity about playback state.
+- **Impact on Golden Build**: Gives court viewers full visibility over TV replay playback progress and remote seek controls without affecting live RTSP monitoring streams.
+- **Context Sufficiency**: Yes.
+- **Code Bible/Map Updated**: Pending user approval.
+
+---
+
+## 2026-08-30: TV App HDR Display Mode Support & Admin Toggle
+- **User Request**: Add forced HDR display support when open and add a setting on the TV Admin Panel to enable/disable HDR.
+- **Technical Resolution**: 
+    1. **Manifest Config**: Added `android:colorMode="hdr"` attribute to `MainActivity` in `tv/src/main/AndroidManifest.xml`.
+    2. **Capabilities Detection**: Implemented `checkHdrCapabilities` in `TvDashboardViewModel.kt` querying `display.hdrCapabilities` on API 26+ devices.
+    3. **Dynamic Window Sync**: Added `LaunchedEffect(uiState.useHdrMode)` in `TvDashboardScreen.kt` dynamically setting `activity.window.colorMode = ActivityInfo.COLOR_MODE_HDR` (or `COLOR_MODE_DEFAULT`).
+    4. **Admin Settings Card**: Added an interactive **DISPLAY MODE SELECTION** toggle card in `AdminPanelDialog` and a `TV Display HDR` diagnostic row showing `SUPPORTED / NOT SUPPORTED`.
+- **Impact on Golden Build**: Allows TV app users to leverage 10-bit wide color gamut HDR rendering on supported displays while preserving SDR fallback and preference persistence.
+- **Context Sufficiency**: Yes.
+- **Code Bible/Map Updated**: Pending user approval.
+
+
+
+

@@ -1,5 +1,7 @@
 package com.pbcam.tv.ui
 
+import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -14,9 +16,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.ui.input.key.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -56,6 +62,26 @@ import java.util.*
 @Composable
 fun TvDashboardScreen(viewModel: TvDashboardViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val activity = context as? Activity
+    var showExitConfirm by remember { mutableStateOf(false) }
+    var showUnpairWarning by remember { mutableStateOf(false) }
+
+    // --- TV DISPLAY HDR WINDOW COLOR MODE SYNC ---
+    LaunchedEffect(uiState.useHdrMode) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && activity != null) {
+            activity.window.colorMode = if (uiState.useHdrMode) {
+                android.content.pm.ActivityInfo.COLOR_MODE_HDR
+            } else {
+                android.content.pm.ActivityInfo.COLOR_MODE_DEFAULT
+            }
+        }
+    }
+
+    // --- TV REMOTE BACK-BUTTON HANDLING FOR REPLAY ---
+    BackHandler(enabled = uiState.isAutoReplayActive) {
+        viewModel.dismissReplay()
+    }
 
     if (uiState.isSplashScreenActive) {
         SplashView()
@@ -69,36 +95,28 @@ fun TvDashboardScreen(viewModel: TvDashboardViewModel = viewModel()) {
             // Layer 1: Branding and Utilities (Logo, Tagline)
             BrandingOverlay()
 
-            // Layer 2: Top Status Banner (Detached)
-            StatusBanner(uiState)
+            // Layer 2: Top Status Banner (Detached) - Hidden during replay
+            if (!uiState.isAutoReplayActive) {
+                StatusBanner(uiState)
+            }
 
-            // Layer 2.5: Interactive Bottom Control Cluster (Replays & Admin)
-            BottomControlCluster(uiState, viewModel)
+            // Layer 2.5: Interactive Bottom Control Cluster (Replays, Admin, Shutdown) - Hidden during replay
+            if (!uiState.isAutoReplayActive) {
+                BottomControlCluster(
+                    uiState = uiState,
+                    viewModel = viewModel,
+                    onExitApp = { showExitConfirm = true }
+                )
+            }
 
             // --- REPLAY LIST DIALOG ---
             if (uiState.isReplayListOpen) {
                 TvReplayListDialog(uiState, viewModel)
             }
 
-            // Layer 2.6: Replay Dismiss (Floating Hint)
+            // Layer 2.6: Replay Dismiss Overlay (Prominent Top-Left Control when Replay is active)
             if (uiState.isAutoReplayActive && uiState.status == "IDLE" && !uiState.showReplayCompletePrompt && !uiState.isReplayLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize().padding(32.dp),
-                    contentAlignment = Alignment.BottomCenter
-                ) {
-                    Surface(
-                        color = Color.Black.copy(alpha = 0.6f),
-                        shape = RoundedCornerShape(12.dp),
-                        onClick = { viewModel.dismissReplay() }
-                    ) {
-                        Text(
-                            "Press DOWN or click to exit Replay",
-                            color = Color.White.copy(alpha = 0.7f),
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            fontSize = 14.sp
-                        )
-                    }
-                }
+                ReplayDismissOverlay(onDismiss = { viewModel.dismissReplay() })
             }
 
             // --- REPLAY LOADING ANIMATION ---
@@ -129,7 +147,7 @@ fun TvDashboardScreen(viewModel: TvDashboardViewModel = viewModel()) {
                 contentAlignment = Alignment.BottomEnd
             ) {
                 Column(horizontalAlignment = Alignment.End) {
-                    if (uiState.status == "RECORDING" || uiState.status == "PAUSED") {
+                    if (!uiState.isAutoReplayActive && (uiState.status == "RECORDING" || uiState.status == "PAUSED")) {
                         MatchInfoOverlay(uiState)
                         Spacer(modifier = Modifier.height(16.dp))
                     }
@@ -137,10 +155,8 @@ fun TvDashboardScreen(viewModel: TvDashboardViewModel = viewModel()) {
                 }
             }
 
-            var showUnpairWarning by remember { mutableStateOf(false) }
-
             // --- URGENT: TABLET OFFLINE POPUP ---
-            if (!uiState.isTabletOnline) {
+            if (!uiState.isTabletOnline && !uiState.isAutoReplayActive) {
                 OfflineAlertOverlay(
                     uiState = uiState, 
                     viewModel = viewModel,
@@ -149,7 +165,7 @@ fun TvDashboardScreen(viewModel: TvDashboardViewModel = viewModel()) {
             }
 
             // --- OBSCURE FEED BACKDROP FOR DIALOGS ---
-            if (uiState.isSettingsOpen || uiState.isReplayListOpen || showUnpairWarning) {
+            if (uiState.isSettingsOpen || uiState.isReplayListOpen || showUnpairWarning || showExitConfirm) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -164,7 +180,22 @@ fun TvDashboardScreen(viewModel: TvDashboardViewModel = viewModel()) {
                     uiState = uiState,
                     onDismiss = { viewModel.toggleSettings(false) },
                     onUnpair = { showUnpairWarning = true },
-                    onToggleStreamQuality = { viewModel.toggleStreamQuality() }
+                    onToggleStreamQuality = { viewModel.toggleStreamQuality() },
+                    onToggleHdrMode = { viewModel.toggleHdrMode() },
+                    onExitApp = {
+                        viewModel.toggleSettings(false)
+                        showExitConfirm = true
+                    }
+                )
+            }
+
+            // --- EXIT APP CONFIRMATION DIALOG ---
+            if (showExitConfirm) {
+                ExitAppDialog(
+                    onConfirmExit = {
+                        (context as? Activity)?.finishAffinity()
+                    },
+                    onDismiss = { showExitConfirm = false }
                 )
             }
 
@@ -189,9 +220,14 @@ fun TvDashboardScreen(viewModel: TvDashboardViewModel = viewModel()) {
 }
 
 @Composable
-fun BottomControlCluster(uiState: TvUiState, viewModel: TvDashboardViewModel) {
+fun BottomControlCluster(
+    uiState: TvUiState, 
+    viewModel: TvDashboardViewModel,
+    onExitApp: () -> Unit
+) {
     var isReplayFocused by remember { mutableStateOf(false) }
     var isSettingsFocused by remember { mutableStateOf(false) }
+    var isExitFocused by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -241,7 +277,389 @@ fun BottomControlCluster(uiState: TvUiState, viewModel: TvDashboardViewModel) {
                     )
                 }
             }
+
+            // SHUTDOWN / EXIT BUTTON
+            Surface(
+                onClick = onExitApp,
+                color = if (isExitFocused) Color(0xFFFF3B30) else Color.Black.copy(alpha = 0.6f),
+                shape = CircleShape,
+                modifier = Modifier
+                    .size(64.dp)
+                    .onFocusChanged { isExitFocused = it.isFocused }
+                    .shadow(elevation = 12.dp, shape = CircleShape)
+                    .border(2.dp, if (isExitFocused) Color.White else Color.Transparent, CircleShape),
+                contentColor = if (isExitFocused) Color.White else Color(0xFFFF3B30)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.PowerSettingsNew,
+                        contentDescription = "Exit Application",
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+fun ReplayDismissOverlay(onDismiss: () -> Unit) {
+    var isExitFocused by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        contentAlignment = Alignment.TopStart
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // High-impact INSTANT REPLAY Status Badge
+            Surface(
+                color = Color(0xFFFF3B30),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.shadow(8.dp, RoundedCornerShape(10.dp))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(Color.White, CircleShape)
+                    )
+                    Text(
+                        text = "INSTANT REPLAY",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+
+            // Interactive EXIT REPLAY Button
+            Surface(
+                onClick = onDismiss,
+                color = if (isExitFocused) Color(0xFF99FF00) else Color.Black.copy(alpha = 0.8f),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { isExitFocused = it.isFocused }
+                    .shadow(elevation = 12.dp, shape = RoundedCornerShape(12.dp))
+                    .border(
+                        width = 2.dp,
+                        color = if (isExitFocused) Color.White else Color(0xFF99FF00).copy(alpha = 0.6f),
+                        shape = RoundedCornerShape(12.dp)
+                    ),
+                contentColor = if (isExitFocused) Color.Black else Color.White
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Exit Replay",
+                        modifier = Modifier.size(20.dp),
+                        tint = if (isExitFocused) Color.Black else Color.White
+                    )
+                    Text(
+                        text = "EXIT REPLAY",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isExitFocused) Color.Black else Color.White
+                    )
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        try { focusRequester.requestFocus() } catch (_: Exception) {}
+    }
+}
+
+fun formatTime(ms: Long): String {
+    val totalSecs = (ms / 1000).coerceAtLeast(0)
+    val mins = totalSecs / 60
+    val secs = totalSecs % 60
+    return String.format(Locale.US, "%02d:%02d", mins, secs)
+}
+
+@Composable
+fun ReplaySeekBarOverlay(
+    exoPlayer: ExoPlayer,
+    uiState: TvUiState,
+    viewModel: TvDashboardViewModel
+) {
+    var currentPosMs by remember { mutableLongStateOf(0L) }
+    var durationMs by remember { mutableLongStateOf(0L) }
+    var isEnded by remember { mutableStateOf(false) }
+    var isPlaying by remember { mutableStateOf(false) }
+    var isContainerFocused by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+
+    // Ticker loop: update playback progress every 250ms during active replay
+    LaunchedEffect(exoPlayer, uiState.isAutoReplayActive) {
+        while (uiState.isAutoReplayActive) {
+            val pos = exoPlayer.currentPosition.coerceAtLeast(0L)
+            val dur = exoPlayer.duration.coerceAtLeast(0L)
+            currentPosMs = pos
+            durationMs = dur
+            isEnded = exoPlayer.playbackState == Player.STATE_ENDED || (dur > 0L && pos >= dur)
+            isPlaying = exoPlayer.isPlaying
+            delay(250)
+        }
+    }
+
+    val progress = if (durationMs > 0L) (currentPosMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = 32.dp, start = 32.dp, end = 32.dp),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Surface(
+            onClick = {
+                if (isEnded) {
+                    exoPlayer.seekTo(0)
+                    exoPlayer.play()
+                } else if (isPlaying) {
+                    exoPlayer.pause()
+                } else {
+                    exoPlayer.play()
+                }
+            },
+            color = Color.Black.copy(alpha = 0.85f),
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(
+                width = 2.dp,
+                color = if (isContainerFocused) Color(0xFF99FF00) else Color.White.copy(alpha = 0.25f)
+            ),
+            modifier = Modifier
+                .width(680.dp)
+                .focusRequester(focusRequester)
+                .onFocusChanged { isContainerFocused = it.isFocused }
+                .onKeyEvent { keyEvent ->
+                    if (keyEvent.type == KeyEventType.KeyDown) {
+                        when (keyEvent.nativeKeyEvent.keyCode) {
+                            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                val newPos = (exoPlayer.currentPosition - 5000L).coerceAtLeast(0L)
+                                exoPlayer.seekTo(newPos)
+                                true
+                            }
+                            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                val maxDur = exoPlayer.duration.coerceAtLeast(0L)
+                                if (maxDur > 0L) {
+                                    val newPos = (exoPlayer.currentPosition + 5000L).coerceAtMost(maxDur)
+                                    exoPlayer.seekTo(newPos)
+                                }
+                                true
+                            }
+                            else -> false
+                        }
+                    } else false
+                }
+                .shadow(16.dp, RoundedCornerShape(16.dp))
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // ROW 1: HEADER & STATUS TAG
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Surface(
+                            color = when {
+                                isEnded -> Color(0xFFFF3B30)
+                                isPlaying -> Color(0xFF99FF00)
+                                else -> Color.Yellow
+                            },
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = when {
+                                    isEnded -> "⏹ REPLAY FINISHED"
+                                    isPlaying -> "▶ PLAYING REPLAY"
+                                    else -> "⏸ PAUSED"
+                                },
+                                color = if (isPlaying && !isEnded) Color.Black else Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+
+                        if (isContainerFocused) {
+                            Text(
+                                text = "Use ◄ ► Remote Keys to Seek (±5s)",
+                                color = Color.White.copy(alpha = 0.7f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    // TIMESTAMP DISPLAY: 01:23 / 05:00
+                    Text(
+                        text = "${formatTime(currentPosMs)} / ${formatTime(durationMs)}",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+
+                // ROW 2: PROGRESS BAR TRACK & THUMB
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.2f))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progress)
+                            .fillMaxHeight()
+                            .clip(CircleShape)
+                            .background(if (isEnded) Color(0xFFFF3B30) else Color(0xFF99FF00))
+                    )
+                }
+
+                // ROW 3: CONTROL ACTIONS
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = when {
+                                isEnded -> Icons.Default.Replay
+                                isPlaying -> Icons.Default.Pause
+                                else -> Icons.Default.PlayArrow
+                            },
+                            contentDescription = "Toggle Play/Pause",
+                            tint = if (isContainerFocused) Color(0xFF99FF00) else Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = when {
+                                isEnded -> "Click to Watch Again"
+                                isPlaying -> "Click to Pause"
+                                else -> "Click to Play"
+                            },
+                            color = Color.White.copy(alpha = 0.85f),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Text(
+                        text = if (isEnded) "Video Stopped • Select EXIT REPLAY on top-left to return to Live Court" else "Press Back or EXIT REPLAY to close",
+                        color = if (isEnded) Color(0xFFFF3B30) else Color.White.copy(alpha = 0.5f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ExitAppDialog(onConfirmExit: () -> Unit, onDismiss: () -> Unit) {
+    val focusRequester = remember { FocusRequester() }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            color = Color(0xFF1E1E1E),
+            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier
+                .width(520.dp)
+                .zIndex(480f),
+            border = BorderStroke(2.dp, Color(0xFFFF3B30))
+        ) {
+            Column(
+                modifier = Modifier.padding(32.dp),
+                horizontalAlignment = Alignment.Start
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        Icons.Default.PowerSettingsNew,
+                        contentDescription = null,
+                        tint = Color(0xFFFF3B30),
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Text(
+                        text = "EXIT APPLICATION?",
+                        color = Color.White,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "Are you sure you want to close the court monitoring application? Live stream playback will be stopped.",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 15.sp
+                )
+
+                Spacer(modifier = Modifier.height(28.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Button(
+                        onClick = onConfirmExit,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF3B30)),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(54.dp)
+                            .focusRequester(focusRequester)
+                    ) {
+                        Text("EXIT APP", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(54.dp)
+                    ) {
+                        Text("CANCEL", color = Color.White)
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        try { focusRequester.requestFocus() } catch (_: Exception) {}
     }
 }
 
@@ -398,11 +816,14 @@ fun AdminPanelDialog(
     uiState: TvUiState,
     onDismiss: () -> Unit,
     onUnpair: () -> Unit,
-    onToggleStreamQuality: () -> Unit
+    onToggleStreamQuality: () -> Unit,
+    onToggleHdrMode: () -> Unit,
+    onExitApp: () -> Unit
 ) {
     val focusRequester = remember { FocusRequester() }
     val tvMetrics = rememberTvScreenMetrics()
     var isStreamModeFocused by remember { mutableStateOf(false) }
+    var isHdrModeFocused by remember { mutableStateOf(false) }
     val sdf = SimpleDateFormat("HH:mm:ss", Locale.US).apply {
         timeZone = TimeZone.getTimeZone("Asia/Manila")
     }
@@ -475,6 +896,58 @@ fun AdminPanelDialog(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // --- HDR DISPLAY MODE OPTION ---
+                Text("DISPLAY MODE SELECTION", color = Color.White.copy(alpha = 0.4f), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Surface(
+                    onClick = onToggleHdrMode,
+                    color = if (isHdrModeFocused) Color(0xFF99FF00) else Color(0xFF2B2B2B),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(2.dp, if (isHdrModeFocused) Color.White else Color.Transparent),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { isHdrModeFocused = it.isFocused },
+                    contentColor = if (isHdrModeFocused) Color.Black else Color.White
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = if (uiState.useHdrMode) "HDR MODE: ENABLED (HIGH DYNAMIC RANGE)" else "HDR MODE: DISABLED (STANDARD SDR)",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 15.sp,
+                                color = if (isHdrModeFocused) Color.Black else if (uiState.useHdrMode) Color(0xFF99FF00) else Color.White
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (!uiState.isHdrSupported) "TV Display HDR capabilities: Not Supported"
+                                       else if (uiState.useHdrMode) "Forcing TV display to 10-bit HDR wide color gamut"
+                                       else "Standard Dynamic Range (SDR) color output",
+                                fontSize = 12.sp,
+                                color = if (isHdrModeFocused) Color.Black.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.6f)
+                            )
+                        }
+                        Surface(
+                            color = if (isHdrModeFocused) Color.Black else if (uiState.useHdrMode) Color(0xFF99FF00) else Color(0xFF555555),
+                            shape = RoundedCornerShape(20.dp)
+                        ) {
+                            Text(
+                                text = if (uiState.useHdrMode) "ON" else "OFF",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 12.sp,
+                                color = if (isHdrModeFocused) Color(0xFF99FF00) else Color.White,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(20.dp))
                 
                 // --- TECHNICAL DIAGNOSTICS ---
@@ -484,6 +957,7 @@ fun AdminPanelDialog(
                 DiagnosticRow("Paired Device ID", uiState.pairedDeviceId)
                 DiagnosticRow("Firebase Link", if (uiState.firebaseConnected) "CONNECTED" else "DISCONNECTED", if (uiState.firebaseConnected) Color(0xFF99FF00) else Color.Red)
                 DiagnosticRow("Sync Status", uiState.debugInfo, if (uiState.isTabletOnline) Color(0xFF99FF00) else Color.Yellow)
+                DiagnosticRow("TV Display HDR", if (uiState.isHdrSupported) "SUPPORTED" else "NOT SUPPORTED", if (uiState.isHdrSupported) Color(0xFF99FF00) else Color.White.copy(alpha = 0.5f))
                 DiagnosticRow("Cloud Latency", if (uiState.lastUpdateTimestamp > 0L) sdf.format(Date(uiState.lastUpdateTimestamp)) else "N/A")
                 DiagnosticRow("Active RTSP URL", sanitizeRtspUrl(activeRtspRaw))
                 DiagnosticRow("Local Replay", if (uiState.localReplayUrl != "") "READY" else "NOT READY", if (uiState.localReplayUrl != "") Color(0xFF99FF00) else Color.White.copy(alpha = 0.5f))
@@ -491,21 +965,30 @@ fun AdminPanelDialog(
                 Spacer(modifier = Modifier.height(28.dp))
                 
                 // --- ACTIONS ---
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(
                         onClick = onUnpair,
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
                         modifier = Modifier.weight(1f).height(54.dp).focusRequester(focusRequester)
                     ) {
-                        Text("PAIR NEW DEVICE", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("UNPAIR DEVICE", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
-                    
+
+                    Button(
+                        onClick = onExitApp,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF3B30).copy(alpha = 0.2f), contentColor = Color(0xFFFF3B30)),
+                        border = BorderStroke(1.dp, Color(0xFFFF3B30)),
+                        modifier = Modifier.weight(1f).height(54.dp)
+                    ) {
+                        Text("EXIT APP", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+
                     Button(
                         onClick = onDismiss,
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)),
                         modifier = Modifier.weight(1f).height(54.dp)
                     ) {
-                        Text("CLOSE PANEL", color = Color.White)
+                        Text("CLOSE", color = Color.White, fontSize = 13.sp)
                     }
                 }
             }
@@ -1060,6 +1543,11 @@ fun VideoPlayerLayer(uiState: TvUiState, viewModel: TvDashboardViewModel) {
                     }
                 }
             }
+        }
+
+        // Interactive Replay Player Seek Slider & Playback Status Overlay
+        if (uiState.isAutoReplayActive && !uiState.isReplayLoading) {
+            ReplaySeekBarOverlay(exoPlayer = exoPlayer, uiState = uiState, viewModel = viewModel)
         }
     }
 }
