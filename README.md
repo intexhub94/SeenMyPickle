@@ -11,14 +11,16 @@ It features a multi-source video capture engine (RTSP/Internal/USB), a hardware-
 ## 🌟 Key System Modules & Features
 
 ### 📹 1. Professional Tablet Recording Engine (`:app`)
-- **Multi-Source Support**: High-fidelity video capture from RTSP (CCTV/IP cameras), Internal tablet cameras (via CameraX), and external USB cameras.
+- **Multi-Source Support**: High-fidelity video capture from RTSP (CCTV/IP cameras), Internal tablet cameras (via CameraX), and external USB cameras (`LENS_FACING_EXTERNAL`).
 - **Dual-Stream Strategy**: High-resolution Main Stream for recording and low-latency Sub-Stream for live dashboard monitoring.
 - **Resilient FFmpeg Capture**: 50MB jitter buffers, packet reordering, and TCP transport (`-rtsp_flags prefer_tcp`) to handle wireless camera fluctuations.
-- **Micro-Segmenting**: Automatically rotates long matches into 10-minute segments to prevent data loss.
+- **Micro-Segmenting**: Automatically rotates long matches into 10-minute segments to prevent catastrophic data loss.
 - **Jitter-Proof Processing**: Mandatory `fps=30` motion smoothing and `setpts` timestamp normalization during hardware-accelerated MediaCodec conversion.
+- **Immersive Continuity**: Captures "Frozen Frame" snapshots to maintain court background visibility during pause and standby states.
+- **Adaptive Ergonomics**: Dynamic device DPI & screen metrics (`rememberDeviceScreenMetrics`) scaling UI typography, controls, and cards seamlessly across phones, landscape tablets, and 4K TVs.
 
-### 🖥️ 2. Windows Desktop Media Server & Storage Vault (`seenmypickle_server.py`)
-- **Desktop Graphical Interface (Tkinter)**: Native GUI allows court owners to pick any local drive or external hard folder (`D:\SeenMyPickle_Vault`) with a single click.
+### 🖥️ 2. Windows/Linux Desktop Media Server & Storage Vault (`seenmypickle_server.py`)
+- **Desktop Graphical Interface (Tkinter)**: Native GUI allows court operators to pick any local drive or external hard folder (`D:\SeenMyPickle_Vault`) with a single click.
 - **Fail-Safe Tablet Storage Offload**: Tablet uploads converted `.mp4` recordings over LAN to the Windows PC server (`ServerUploadWorker`) and purges tablet flash memory **ONLY AFTER receiving confirmed HTTP 200 OK receipt**.
 - **Byte-Range HTTP Media Server**: Serves fast `HTTP 206 Partial Content` video streams over local Wi-Fi for ExoPlayer seeking on TV devices.
 - **Storage & Server Dashboard**: Displays local PC IP address, active port (`5000`), free disk space, and real-time upload/streaming activity logs.
@@ -68,6 +70,18 @@ It features a multi-source video capture engine (RTSP/Internal/USB), a hardware-
 
 ---
 
+## 🔌 Desktop Server REST API Endpoints
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/status` | Returns server health, local IP, port, selected storage directory, and free storage GB. |
+| `GET` | `/api/recordings` | Returns JSON catalog of all recorded `.mp4` files with size, timestamps, and stream URLs. |
+| `POST` | `/api/upload` | Receives multipart/binary video uploads from the tablet and saves them atomically. |
+| `GET` | `/api/stream/{filename}` | Serves HTTP byte-range video streams (`HTTP 206 Partial Content`) for Media3/ExoPlayer seeking. |
+| `DELETE` | `/api/recordings/{filename}` | Permanently deletes a recording from the desktop vault. |
+
+---
+
 ## 🛠️ Technology Stack
 
 | Component | Technology / Library |
@@ -109,6 +123,20 @@ It features a multi-source video capture engine (RTSP/Internal/USB), a hardware-
 1. Deploy `:tv` module to your Android TV or Fire TV stick.
 2. Enter the **Pairing ID** displayed on the tablet's header (`PB-XXXX-XXXX`).
 3. The TV app will automatically detect live match status and stream instant replays directly from the local Windows PC Desktop Vault!
+
+---
+
+## 🛠️ Building & Pushing Updates
+
+### Build Verification Commands
+```bash
+./gradlew app:assembleDebug
+./gradlew tv:assembleDebug
+```
+
+### Pushing Commits via Android Studio
+1. In Android Studio's top menu bar, click **Git** -> **Push...** (or press `Ctrl + Shift + K`).
+2. Select your commits and click **Push**.
 
 ---
 
