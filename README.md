@@ -96,6 +96,23 @@ It features a multi-source video capture engine (RTSP/Internal/USB), a hardware-
 
 ---
 
+## 📜 Open Source Software (OSS) Compliance & Licensing
+
+All third-party libraries and frameworks used in this project are 100% open-source and free for production and commercial deployment:
+
+| Module / Dependency | Open Source License |
+| :--- | :--- |
+| **AndroidX, Jetpack Compose, CameraX, Room, WorkManager, Media3** | Apache License 2.0 |
+| **Kotlin Coroutines & Standard Library** | Apache License 2.0 |
+| **Material Design 3 & Material Icons** | Apache License 2.0 |
+| **ZXing QR Scanner Core & FastExcel** | Apache License 2.0 |
+| **Android YouTube Player & Smart Exception** | MIT License |
+| **FFmpegKit Maintained Engine** | LGPL v3.0 / GPL v3.0 |
+| **Google Firebase SDKs & ML Kit Barcode Scanning** | Google Open SDK Terms |
+| **Python 3 & Tkinter GUI Engine** | Python Software Foundation (PSF) License |
+
+---
+
 ## 🚦 Getting Started
 
 ### 1. Tablet Setup (`:app`)
