@@ -1,6 +1,5 @@
 package com.pbcam.app.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -89,9 +88,10 @@ fun SessionList(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (session.status == RecordingStatus.COMPLETED) {
+                        val localFileExists = session.filename.isNotBlank() && java.io.File(session.filename).exists() && java.io.File(session.filename).length() > 1024
+                        if (localFileExists) {
                             IconButton(
-                                onClick = { if (session.filename.isNotBlank()) onPlay(session.filename) },
+                                onClick = { onPlay(session.filename) },
                                 modifier = Modifier.size(40.dp)
                             ) {
                                 Icon(Icons.Default.PlayCircle, "Play Local", tint = MaterialTheme.colorScheme.primary)
@@ -127,28 +127,29 @@ fun SessionList(
     }
 }
 
-@Composable
-fun LocalVideoPlayerDialog(videoPath: String, onDismiss: () -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val player = androidx.compose.runtime.remember { androidx.media3.exoplayer.ExoPlayer.Builder(context).build() }
-
-    androidx.compose.runtime.LaunchedEffect(videoPath) {
-        val file = java.io.File(videoPath)
-        if (file.exists()) {
-            player.setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(file)))
-            player.prepare()
-            player.play()
-        }
+fun playVideoWithExternalPlayer(context: android.content.Context, videoPath: String) {
+    val file = java.io.File(videoPath)
+    if (!file.exists()) {
+        android.widget.Toast.makeText(context, "Video file not found", android.widget.Toast.LENGTH_SHORT).show()
+        return
     }
-
-    AlertDialog(
-        onDismissRequest = { player.release(); onDismiss() },
-        title = { Text("Playback Review") },
-        text = {
-            Box(modifier = Modifier.fillMaxWidth().aspectRatio(16/9f).background(Color.Black)) {
-                androidx.compose.ui.viewinterop.AndroidView(factory = { ctx -> androidx.media3.ui.PlayerView(ctx).apply { this.player = player; useController = true } }, modifier = Modifier.fillMaxSize())
-            }
-        },
-        confirmButton = { Button(onClick = { player.release(); onDismiss() }) { Text("CLOSE") } }
-    )
+    try {
+        val uri: android.net.Uri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "video/mp4")
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val chooser = android.content.Intent.createChooser(intent, "Play Recording").apply {
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(chooser)
+    } catch (e: Exception) {
+        android.util.Log.e("SessionList", "Failed to launch external video player", e)
+        android.widget.Toast.makeText(context, "No external video player application found", android.widget.Toast.LENGTH_SHORT).show()
+    }
 }

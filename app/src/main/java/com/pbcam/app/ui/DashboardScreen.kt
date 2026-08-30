@@ -198,348 +198,350 @@ fun DashboardScreen(
             }
         }
 
-        Box(modifier = Modifier.fillMaxSize().zIndex(2f)) {
-            
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .displayCutoutPadding()
-                    .padding(horizontal = 24.dp, vertical = headerVerticalPadding),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Surface(
-                    color = Color.Black.copy(alpha = 0.4f),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.shadow(
-                        elevation = 8.dp,
-                        shape = RoundedCornerShape(16.dp)
-                    )
-                ) {
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (isTablet) 12.dp else 8.dp)) {
-                            Text(
-                                "SeenMyPickle",
-                                style = (if (isTablet) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge).copy(shadow = headerShadow),
-                                fontWeight = FontWeight.Black,
-                                color = Color.White
-                            )
-                            PickleballIcon(modifier = Modifier.size(if (isTablet) 32.dp else 24.dp))
-                            StatusPill(isConfigReady = uiState.isConfigReady, shadow = headerShadow)
-                            
-                            VerticalDivider(
-                                modifier = Modifier.height(if (isTablet) 24.dp else 16.dp).width(1.dp),
-                                color = Color.White.copy(alpha = 0.2f)
-                            )
-                            Text(
-                                text = uiState.courtTag.uppercase(),
-                                style = (if (isTablet) MaterialTheme.typography.labelLarge else MaterialTheme.typography.labelMedium).copy(shadow = headerShadow),
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White.copy(alpha = 0.7f)
-                            )
-                        }
-
-                        // --- SUBTLE TV PAIRING ID ---
-                        Text(
-                            text = "TV PAIRING ID: ${uiState.deviceId}",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                shadow = headerShadow,
-                                fontSize = 10.sp,
-                                letterSpacing = 1.sp
-                            ),
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .padding(top = 2.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .clickable { showPairingInfoDialog = true }
-                        )
-                    }
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    val progress = uiState.uploadProgress
-                    if (progress != null) {
-                        Column(modifier = Modifier.padding(top = if (isTablet) 8.dp else 4.dp).width(if (isTablet) 300.dp else 200.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (isTablet) 8.dp else 4.dp)) {
-                                val infiniteTransition = rememberInfiniteTransition(label = "header_pulse")
-                                val alpha by infiniteTransition.animateFloat(
-                                    initialValue = 1f,
-                                    targetValue = 0.3f,
-                                    animationSpec = infiniteRepeatable(animation = tween(800), repeatMode = RepeatMode.Reverse),
-                                    label = "alpha"
-                                )
-
-                                val isFailed = uiState.uploadMessage == "FAILED"
-                                
-                                Box(
-                                    modifier = Modifier
-                                        .size(10.dp)
-                                        .border(1.dp, Color.Black.copy(alpha = 0.5f), CircleShape)
-                                        .padding(1.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isFailed) Color.Red else MaterialTheme.colorScheme.primary.copy(alpha = alpha))
-                                )
-                                
-                                Text(
-                                    text = (uiState.uploadMessage).uppercase(),
-                                    style = MaterialTheme.typography.labelSmall.copy(shadow = headerShadow),
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = if (isFailed) Color.Red else MaterialTheme.colorScheme.primary
-                                )
-
-                                if (isFailed && uiState.failedPipelineSessionId != null) {
-                                    Spacer(Modifier.width(8.dp))
-                                    IconButton(
-                                        onClick = { viewModel.retryUpload(uiState.failedPipelineSessionId!!) },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(Icons.Default.Refresh, "Retry", tint = Color.Red, modifier = Modifier.size(18.dp))
-                                    }
-                                    
-                                    Spacer(Modifier.width(4.dp))
-                                    IconButton(
-                                        onClick = { viewModel.clearFailedState() },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(Icons.Default.Close, "Dismiss", tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                            }
-                            Spacer(Modifier.height(4.dp))
-                            Box(modifier = Modifier.fillMaxWidth().height(6.dp)) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .offset(y = 1.dp)
-                                        .clip(CircleShape)
-                                        .background(Color.Black.copy(alpha = 0.3f))
-                                )
-                                LinearProgressIndicator(
-                                    progress = { progress },
-                                    modifier = Modifier.fillMaxSize().clip(CircleShape),
-                                    color = if (uiState.uploadMessage == "FAILED") Color.Red else MaterialTheme.colorScheme.primary,
-                                    trackColor = Color.White.copy(alpha = 0.2f)
-                                )
-                            }
-                        }
-                    }
-
-                    IconButton(onClick = { showShutdownDialog = true }) {
-                        Icon(
-                            Icons.Default.PowerSettingsNew,
-                            contentDescription = "Shutdown",
-                            tint = Color.Red,
-                            modifier = Modifier.size(32.dp).shadow(elevation = 8.dp, shape = CircleShape)
-                        )
-                    }
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.ime)
-                    .navigationBarsPadding()
-                    .displayCutoutPadding()
-                    .padding(sidePadding),
-                contentAlignment = if (isKeyboardVisible) Alignment.Center else Alignment.BottomEnd
-            ) {
-                RecordingControlCard(
-                    uiState = uiState,
-                    viewModel = viewModel,
-                    isTablet = isTablet,
-                    hasAgreedWaiver = hasAgreedWaiver,
-                    onRequestWaiver = { showWaiverDialog = true },
-                    onStart = onStartRecording,
-                    onStop = onStopRecording
-                )
-            }
-
-            // --- NAVIGATION & UTILITY CONTROLS (Bottom Start) ---
-            // Increased zIndex to ensure it's layered ON TOP of everything
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .navigationBarsPadding()
-                    .displayCutoutPadding()
-                    .padding(sidePadding)
-                    .zIndex(10f),
-                color = Color.Black.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(32.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
-            ) {
+        if (!showAdminPanel) {
+            Box(modifier = Modifier.fillMaxSize().zIndex(2f)) {
+                
                 Row(
-                    modifier = Modifier.padding(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(if (isTablet) 16.dp else 8.dp)
-                ) {
-                    DashboardIconButton(
-                        icon = Icons.Default.Settings, 
-                        size = controlSize,
-                        iconSize = iconSize,
-                        onClick = { showPasscodeDialog = true }
-                    )
-                    DashboardIconButton(
-                        icon = if (uiState.isPreviewMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
-                        size = controlSize,
-                        iconSize = iconSize,
-                        onClick = { viewModel.toggleMute() }
-                    )
-                    DashboardIconButton(
-                        icon = if (isPreviewActive) Icons.Default.Stop else Icons.Default.PlayArrow,
-                        size = controlSize,
-                        iconSize = iconSize,
-                        onClick = { 
-                            if (isPreviewActive) viewModel.stopPreview()
-                            else viewModel.startPreview()
-                        }
-                    )
-                }
-            }
-
-            if (isRecording && uiState.cameraSource != CameraSource.RTSP) {
-                val seconds = recordingDurationSeconds
-                val hrs = seconds / 3600
-                val mins = (seconds % 3600) / 60
-                val secs = seconds % 60
-                val timeStr = if (hrs > 0) String.format(Locale.US, "%02d:%02d:%02d", hrs, mins, secs) else String.format(Locale.US, "%02d:%02d", mins, secs)
-
-                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.TopCenter)
-                        .windowInsetsPadding(WindowInsets.statusBars)
-                        .windowInsetsPadding(WindowInsets.displayCutout)
-                        .padding(top = headerVerticalPadding),
-                    contentAlignment = Alignment.TopCenter
+                        .statusBarsPadding()
+                        .displayCutoutPadding()
+                        .padding(horizontal = 24.dp, vertical = headerVerticalPadding),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
                 ) {
                     Surface(
-                        color = Color.Black.copy(alpha = 0.7f),
-                        shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
-                        border = BorderStroke(2.dp, Color.Red.copy(alpha = 0.6f))
+                        color = Color.Black.copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.shadow(
+                            elevation = 8.dp,
+                            shape = RoundedCornerShape(16.dp)
+                        )
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 32.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            val infiniteTransition = rememberInfiniteTransition(label = "rec_pulse")
-                            val alpha by infiniteTransition.animateFloat(
-                                initialValue = 1f,
-                                targetValue = 0.2f,
-                                animationSpec = infiniteRepeatable(animation = tween(800), repeatMode = RepeatMode.Reverse),
-                                label = "dot_alpha"
-                            )
-                            Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color.Red.copy(alpha = alpha)))
-                            
-                            val bannerText = if (isPaused) {
-                                "MATCH PAUSED"
-                            } else {
-                                "MATCH LIVE • $timeStr"
+                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (isTablet) 12.dp else 8.dp)) {
+                                Text(
+                                    "SeenMyPickle",
+                                    style = (if (isTablet) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge).copy(shadow = headerShadow),
+                                    fontWeight = FontWeight.Black,
+                                    color = Color.White
+                                )
+                                PickleballIcon(modifier = Modifier.size(if (isTablet) 32.dp else 24.dp))
+                                StatusPill(isConfigReady = uiState.isConfigReady, shadow = headerShadow)
+                                
+                                VerticalDivider(
+                                    modifier = Modifier.height(if (isTablet) 24.dp else 16.dp).width(1.dp),
+                                    color = Color.White.copy(alpha = 0.2f)
+                                )
+                                Text(
+                                    text = uiState.courtTag.uppercase(),
+                                    style = (if (isTablet) MaterialTheme.typography.labelLarge else MaterialTheme.typography.labelMedium).copy(shadow = headerShadow),
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White.copy(alpha = 0.7f)
+                                )
                             }
 
+                            // --- SUBTLE TV PAIRING ID ---
                             Text(
-                                text = bannerText,
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isPaused) Color.Yellow else Color.White,
-                                letterSpacing = 2.sp
+                                text = "TV PAIRING ID: ${uiState.deviceId}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    shadow = headerShadow,
+                                    fontSize = 10.sp,
+                                    letterSpacing = 1.sp
+                                ),
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .padding(top = 2.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .clickable { showPairingInfoDialog = true }
+                            )
+                        }
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        val progress = uiState.uploadProgress
+                        if (progress != null) {
+                            Column(modifier = Modifier.padding(top = if (isTablet) 8.dp else 4.dp).width(if (isTablet) 300.dp else 200.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (isTablet) 8.dp else 4.dp)) {
+                                    val infiniteTransition = rememberInfiniteTransition(label = "header_pulse")
+                                    val alpha by infiniteTransition.animateFloat(
+                                        initialValue = 1f,
+                                        targetValue = 0.3f,
+                                        animationSpec = infiniteRepeatable(animation = tween(800), repeatMode = RepeatMode.Reverse),
+                                        label = "alpha"
+                                    )
+
+                                    val isFailed = uiState.uploadMessage == "FAILED"
+                                    
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .border(1.dp, Color.Black.copy(alpha = 0.5f), CircleShape)
+                                            .padding(1.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isFailed) Color.Red else MaterialTheme.colorScheme.primary.copy(alpha = alpha))
+                                    )
+                                    
+                                    Text(
+                                        text = (uiState.uploadMessage).uppercase(),
+                                        style = MaterialTheme.typography.labelSmall.copy(shadow = headerShadow),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isFailed) Color.Red else MaterialTheme.colorScheme.primary
+                                    )
+
+                                    if (isFailed && uiState.failedPipelineSessionId != null) {
+                                        Spacer(Modifier.width(8.dp))
+                                        IconButton(
+                                            onClick = { viewModel.retryUpload(uiState.failedPipelineSessionId!!) },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(Icons.Default.Refresh, "Retry", tint = Color.Red, modifier = Modifier.size(18.dp))
+                                        }
+                                        
+                                        Spacer(Modifier.width(4.dp))
+                                        IconButton(
+                                            onClick = { viewModel.clearFailedState() },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(Icons.Default.Close, "Dismiss", tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Box(modifier = Modifier.fillMaxWidth().height(6.dp)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .offset(y = 1.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.Black.copy(alpha = 0.3f))
+                                    )
+                                    LinearProgressIndicator(
+                                        progress = { progress },
+                                        modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                        color = if (uiState.uploadMessage == "FAILED") Color.Red else MaterialTheme.colorScheme.primary,
+                                        trackColor = Color.White.copy(alpha = 0.2f)
+                                    )
+                                }
+                            }
+                        }
+
+                        IconButton(onClick = { showShutdownDialog = true }) {
+                            Icon(
+                                Icons.Default.PowerSettingsNew,
+                                contentDescription = "Shutdown",
+                                tint = Color.Red,
+                                modifier = Modifier.size(32.dp).shadow(elevation = 8.dp, shape = CircleShape)
                             )
                         }
                     }
                 }
-            }
-
-            if (isRecording && uiState.cameraSource == CameraSource.RTSP) {
-                val seconds = recordingDurationSeconds
-                val hrs = seconds / 3600
-                val mins = (seconds % 3600) / 60
-                val secs = seconds % 60
-                val timeStr = if (hrs > 0) String.format(Locale.US, "%02d:%02d:%02d", hrs, mins, secs) else String.format(Locale.US, "%02d:%02d", mins, secs)
 
                 Box(
-                    modifier = Modifier.fillMaxSize().zIndex(1.7f),
-                    contentAlignment = Alignment.Center
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.ime)
+                        .navigationBarsPadding()
+                        .displayCutoutPadding()
+                        .padding(sidePadding),
+                    contentAlignment = if (isKeyboardVisible) Alignment.Center else Alignment.BottomEnd
                 ) {
-                    Surface(
-                        color = Color.Black.copy(alpha = 0.8f),
-                        shape = RoundedCornerShape(24.dp),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(32.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            Text(
-                                text = if (isPaused) "MATCH PAUSED" else "MATCH LIVE",
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isPaused) Color.Yellow else Color.White,
-                                letterSpacing = 2.sp
-                            )
+                    RecordingControlCard(
+                        uiState = uiState,
+                        viewModel = viewModel,
+                        isTablet = isTablet,
+                        hasAgreedWaiver = hasAgreedWaiver,
+                        onRequestWaiver = { showWaiverDialog = true },
+                        onStart = onStartRecording,
+                        onStop = onStopRecording
+                    )
+                }
 
+                // --- NAVIGATION & UTILITY CONTROLS (Bottom Start) ---
+                // Increased zIndex to ensure it's layered ON TOP of everything
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .navigationBarsPadding()
+                        .displayCutoutPadding()
+                        .padding(sidePadding)
+                        .zIndex(10f),
+                    color = Color.Black.copy(alpha = 0.4f),
+                    shape = RoundedCornerShape(32.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(if (isTablet) 16.dp else 8.dp)
+                    ) {
+                        DashboardIconButton(
+                            icon = Icons.Default.Settings, 
+                            size = controlSize,
+                            iconSize = iconSize,
+                            onClick = { showPasscodeDialog = true }
+                        )
+                        DashboardIconButton(
+                            icon = if (uiState.isPreviewMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                            size = controlSize,
+                            iconSize = iconSize,
+                            onClick = { viewModel.toggleMute() }
+                        )
+                        DashboardIconButton(
+                            icon = if (isPreviewActive) Icons.Default.Stop else Icons.Default.PlayArrow,
+                            size = controlSize,
+                            iconSize = iconSize,
+                            onClick = { 
+                                if (isPreviewActive) viewModel.stopPreview()
+                                else viewModel.startPreview()
+                            }
+                        )
+                    }
+                }
+
+                if (isRecording && uiState.cameraSource != CameraSource.RTSP) {
+                    val seconds = recordingDurationSeconds
+                    val hrs = seconds / 3600
+                    val mins = (seconds % 3600) / 60
+                    val secs = seconds % 60
+                    val timeStr = if (hrs > 0) String.format(Locale.US, "%02d:%02d:%02d", hrs, mins, secs) else String.format(Locale.US, "%02d:%02d", mins, secs)
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.TopCenter)
+                            .windowInsetsPadding(WindowInsets.statusBars)
+                            .windowInsetsPadding(WindowInsets.displayCutout)
+                            .padding(top = headerVerticalPadding),
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        Surface(
+                            color = Color.Black.copy(alpha = 0.7f),
+                            shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
+                            border = BorderStroke(2.dp, Color.Red.copy(alpha = 0.6f))
+                        ) {
                             Row(
+                                modifier = Modifier.padding(horizontal = 32.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                Icon(
-                                    Icons.Default.Hd,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(32.dp)
+                                val infiniteTransition = rememberInfiniteTransition(label = "rec_pulse")
+                                val alpha by infiniteTransition.animateFloat(
+                                    initialValue = 1f,
+                                    targetValue = 0.2f,
+                                    animationSpec = infiniteRepeatable(animation = tween(800), repeatMode = RepeatMode.Reverse),
+                                    label = "dot_alpha"
                                 )
+                                Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color.Red.copy(alpha = alpha)))
+                                
+                                val bannerText = if (isPaused) {
+                                    "MATCH PAUSED"
+                                } else {
+                                    "MATCH LIVE • $timeStr"
+                                }
+
                                 Text(
-                                    text = "LIVE PREVIEW PAUSED",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
+                                    text = bannerText,
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isPaused) Color.Yellow else Color.White,
+                                    letterSpacing = 2.sp
                                 )
                             }
+                        }
+                    }
+                }
 
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                if (isRecording && uiState.cameraSource == CameraSource.RTSP) {
+                    val seconds = recordingDurationSeconds
+                    val hrs = seconds / 3600
+                    val mins = (seconds % 3600) / 60
+                    val secs = seconds % 60
+                    val timeStr = if (hrs > 0) String.format(Locale.US, "%02d:%02d:%02d", hrs, mins, secs) else String.format(Locale.US, "%02d:%02d", mins, secs)
+
+                    Box(
+                        modifier = Modifier.fillMaxSize().zIndex(1.7f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            color = Color.Black.copy(alpha = 0.8f),
+                            shape = RoundedCornerShape(24.dp),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                if (isPaused) {
+                                Text(
+                                    text = if (isPaused) "MATCH PAUSED" else "MATCH LIVE",
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isPaused) Color.Yellow else Color.White,
+                                    letterSpacing = 2.sp
+                                )
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
                                     Icon(
-                                        Icons.Default.Pause,
+                                        Icons.Default.Hd,
                                         contentDescription = null,
-                                        tint = Color.Yellow,
-                                        modifier = Modifier.size(24.dp)
+                                        tint = Color.White,
+                                        modifier = Modifier.size(32.dp)
                                     )
                                     Text(
-                                        text = "MATCH PAUSED",
-                                        style = MaterialTheme.typography.headlineSmall,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color.Yellow
-                                    )
-                                } else {
-                                    val infiniteTransition = rememberInfiniteTransition(label = "card_rec_pulse")
-                                    val alpha by infiniteTransition.animateFloat(
-                                        initialValue = 1f,
-                                        targetValue = 0.2f,
-                                        animationSpec = infiniteRepeatable(animation = tween(800), repeatMode = RepeatMode.Reverse),
-                                        label = "card_dot_alpha"
-                                    )
-                                    Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(Color.Red.copy(alpha = alpha)))
-                                    Text(
-                                        text = "RECORDING $timeStr",
-                                        style = MaterialTheme.typography.headlineSmall,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color.Red
+                                        text = "LIVE PREVIEW PAUSED",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
                                     )
                                 }
-                            }
 
-                            Text(
-                                text = "Prioritizing hardware resources for maximum recording quality.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color.White.copy(alpha = 0.7f),
-                                textAlign = TextAlign.Center
-                            )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    if (isPaused) {
+                                        Icon(
+                                            Icons.Default.Pause,
+                                            contentDescription = null,
+                                            tint = Color.Yellow,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Text(
+                                            text = "MATCH PAUSED",
+                                            style = MaterialTheme.typography.headlineSmall,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color.Yellow
+                                        )
+                                    } else {
+                                        val infiniteTransition = rememberInfiniteTransition(label = "card_rec_pulse")
+                                        val alpha by infiniteTransition.animateFloat(
+                                            initialValue = 1f,
+                                            targetValue = 0.2f,
+                                            animationSpec = infiniteRepeatable(animation = tween(800), repeatMode = RepeatMode.Reverse),
+                                            label = "card_dot_alpha"
+                                        )
+                                        Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(Color.Red.copy(alpha = alpha)))
+                                        Text(
+                                            text = "RECORDING $timeStr",
+                                            style = MaterialTheme.typography.headlineSmall,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color.Red
+                                        )
+                                    }
+                                }
+
+                                Text(
+                                    text = "Prioritizing hardware resources for maximum recording quality.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
                         }
                     }
                 }

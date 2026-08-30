@@ -2883,3 +2883,16 @@ Strictly follows the rules in `ai_workflow_rules.md`.
 - **Impact on Golden Build**: Prevents the Android system from killing background recording segments or cloud sync workers on the tablet, ensuring 100% data integrity for long matches.
 - **Context Sufficiency**: Yes.
 - **Code Bible/Map Updated**: Yes.
+
+---
+
+## 2026-08-30: Launch External Video Player for Recent Recordings (Main App)
+- **User Request**: Change the play button on recent recordings so the app does not play the video internally using ExoPlayer in a dialog, but instead launches an external video player installed on the device.
+- **Technical Resolution**: 
+    1. **FileProvider Config**: Expanded `file_paths.xml` to include `<external-files-path>` and `<external-path>` so `FileProvider` can generate `content://` URIs for video files in any local storage location.
+    2. **Intent Launching**: Added `playVideoWithExternalPlayer(context, videoPath)` helper in `SessionList.kt` using `FileProvider.getUriForFile(...)` and `Intent.ACTION_VIEW` with `setDataAndType(uri, "video/mp4")` and `FLAG_GRANT_READ_URI_PERMISSION`.
+    3. **UI Integration**: Updated `AdminPanel.kt` (`HistorySection`, `RecordedVideosPane`, `FullHistoryPane`) to invoke `playVideoWithExternalPlayer` on play click, removing `LocalVideoPlayerDialog` and saving RAM/decoder resources.
+- **Impact on Golden Build**: Reduces RAM and decoder overhead in the main app during admin review and delegates video playback to system-optimized external video apps.
+- **Context Sufficiency**: Yes.
+- **Code Bible/Map Updated**: Pending user approval.
+

@@ -324,12 +324,13 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                 val tvCutoff = System.currentTimeMillis() - java.util.concurrent.TimeUnit.HOURS.toMillis(2)
                 val recentList = _uiState.value.sessions
                     .filter { s -> 
-                        (s.status == RecordingStatus.COMPLETED || s.status == RecordingStatus.SENDING_EMAIL || s.status == RecordingStatus.UPLOADING) &&
-                        s.startTime >= tvCutoff
+                        (s.status == RecordingStatus.COMPLETED || s.status == RecordingStatus.SENDING_EMAIL || s.status == RecordingStatus.UPLOADING || s.status == RecordingStatus.PENDING_UPLOAD) &&
+                        s.startTime >= tvCutoff &&
+                        File(s.filename).exists() && File(s.filename).length() > 1024
                     }
                     .take(10)
                     .map { s ->
-                        val localFileExists = File(s.filename).exists()
+                        val localFileExists = File(s.filename).exists() && File(s.filename).length() > 1024
                         val endTime = s.endTime ?: 0L
                         val durationSec = if (endTime > s.startTime) ((endTime - s.startTime) / 1000L) else 0L
                         mapOf(
@@ -344,12 +345,14 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                     }
                 statusMap["recent_sessions"] = recentList
                 
-                // Add local URL if server is running and latest completed session was within 2 hours
-                val localUrl = com.pbcam.app.service.LocalReplayServer.getLocalUrl(app)
-                val latestCompleted = _uiState.value.sessions.firstOrNull { it.status == RecordingStatus.COMPLETED }
-                val isRecentForTv = latestCompleted != null && (System.currentTimeMillis() - latestCompleted.startTime) < java.util.concurrent.TimeUnit.HOURS.toMillis(2)
-                if (localUrl != null && isRecentForTv && (_uiState.value.recordingState == RecordingState.IDLE || _uiState.value.recordingState == RecordingState.PAUSED)) {
-                    statusMap["localReplayUrl"] = localUrl
+                // Add local URL if server is running and latest ready session was within 2 hours
+                val latestReady = _uiState.value.sessions.firstOrNull { 
+                    (it.status == RecordingStatus.COMPLETED || it.status == RecordingStatus.PENDING_UPLOAD || it.status == RecordingStatus.UPLOADING || it.status == RecordingStatus.SENDING_EMAIL) &&
+                    File(it.filename).exists() && File(it.filename).length() > 1024
+                }
+                val isRecentForTv = latestReady != null && (System.currentTimeMillis() - latestReady.startTime) < java.util.concurrent.TimeUnit.HOURS.toMillis(2)
+                if (latestReady != null && isRecentForTv && localIp.isNotBlank() && (_uiState.value.recordingState == RecordingState.IDLE || _uiState.value.recordingState == RecordingState.PAUSED)) {
+                    statusMap["localReplayUrl"] = "http://$localIp:8080/replay?id=${latestReady.id}"
                 } else {
                     statusMap["localReplayUrl"] = ""
                 }

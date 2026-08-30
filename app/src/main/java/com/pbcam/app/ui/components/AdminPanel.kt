@@ -38,7 +38,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pbcam.app.data.CameraSource
 import com.pbcam.app.data.db.RecordingStatus
 import com.pbcam.app.ui.CameraCredentialDialog
-import com.pbcam.app.ui.LocalVideoPlayerDialog
+import com.pbcam.app.ui.playVideoWithExternalPlayer
 import com.pbcam.app.ui.SessionList
 import com.pbcam.app.ui.viewmodel.DashboardViewModel
 import java.text.SimpleDateFormat
@@ -94,7 +94,6 @@ fun AdminPanel(
     var showLogoutConfirmDialog by remember { mutableStateOf(false) }
     var showLicenseRenewalDialog by remember { mutableStateOf(false) }
     var renewalKey by remember { mutableStateOf("") }
-    var selectedVideoPath by remember { mutableStateOf<String?>(null) }
     var currentFilter by remember { mutableStateOf<CameraSource?>(null) } 
     var showFullHistory by remember { mutableStateOf(false) }
     var showRecordedVideos by remember { mutableStateOf(false) }
@@ -307,7 +306,7 @@ fun AdminPanel(
                             if (session?.status == RecordingStatus.COMPLETED) viewModel.resendNotification(id)
                             else viewModel.retryUpload(id)
                         },
-                        onPlay = { path -> selectedVideoPath = path },
+                        onPlay = { path -> playVideoWithExternalPlayer(context, path) },
                         onDelete = onDeleteSession,
                         onDeleteAll = { showDeleteAllConfirm = true },
                         onViewAll = { showFullHistory = true },
@@ -383,7 +382,7 @@ fun AdminPanel(
                         if (session?.status == RecordingStatus.COMPLETED) viewModel.resendNotification(id)
                         else viewModel.retryUpload(id)
                     },
-                    onPlay = { path -> selectedVideoPath = path },
+                    onPlay = { path -> playVideoWithExternalPlayer(context, path) },
                     onDelete = onDeleteSession,
                     onDeleteAll = { showDeleteAllConfirm = true },
                     onViewAll = { showFullHistory = true },
@@ -404,7 +403,7 @@ fun AdminPanel(
                 if (session?.status == RecordingStatus.COMPLETED) viewModel.resendNotification(id)
                 else viewModel.retryUpload(id)
             },
-            onPlay = { path -> selectedVideoPath = path },
+            onPlay = { path -> playVideoWithExternalPlayer(context, path) },
             onRefresh = { viewModel.refresh() },
             onBack = { showRecordedVideos = false }
         )
@@ -422,7 +421,7 @@ fun AdminPanel(
                 if (session?.status == RecordingStatus.COMPLETED) viewModel.resendNotification(id)
                 else viewModel.retryUpload(id)
             },
-            onPlay = { path -> selectedVideoPath = path },
+            onPlay = { path -> playVideoWithExternalPlayer(context, path) },
             onRefresh = { viewModel.refresh() },
             onBack = { showFullHistory = false }
         )
@@ -464,13 +463,6 @@ fun AdminPanel(
             dismissButton = {
                 TextButton(onClick = { showLicenseRenewalDialog = false }) { Text("CANCEL") }
             }
-        )
-    }
-    
-    if (selectedVideoPath != null) {
-        LocalVideoPlayerDialog(
-            videoPath = selectedVideoPath!!,
-            onDismiss = { selectedVideoPath = null }
         )
     }
 }

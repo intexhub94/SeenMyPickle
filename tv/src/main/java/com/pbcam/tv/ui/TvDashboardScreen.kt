@@ -858,6 +858,19 @@ fun VideoPlayerLayer(uiState: TvUiState, viewModel: TvDashboardViewModel) {
     }
 
     var playbackStatus by remember { mutableStateOf("Ready") }
+    var errorDetailReason by remember { mutableStateOf("Initializing stream...") }
+    var isFallbackToSubStream by remember(uiState.rtspUrl, uiState.rtspSubUrl, uiState.useMainStream) { mutableStateOf(false) }
+
+    // 1. Calculate the active RTSP URL based on stream preference and error fallback
+    val activeRtspUrl = remember(uiState.useMainStream, uiState.rtspUrl, uiState.rtspSubUrl, isFallbackToSubStream) {
+        if (isFallbackToSubStream) {
+            if (uiState.rtspSubUrl != "") uiState.rtspSubUrl else uiState.rtspUrl
+        } else if (uiState.useMainStream) {
+            if (uiState.rtspUrl != "") uiState.rtspUrl else uiState.rtspSubUrl
+        } else {
+            if (uiState.rtspSubUrl != "") uiState.rtspSubUrl else uiState.rtspUrl
+        }
+    }
 
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
@@ -875,8 +888,37 @@ fun VideoPlayerLayer(uiState: TvUiState, viewModel: TvDashboardViewModel) {
             }
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                playbackStatus = "Source Error (Check URL)"
-                android.util.Log.e("VideoPlayerLayer", "Playback Error: ${error.message}", error)
+                val causeMsg = error.cause?.message.orEmpty()
+                val errorMsg = error.message.orEmpty()
+                
+                val parsedDetail = when {
+                    error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+                    causeMsg.contains("HEVC", ignoreCase = true) || causeMsg.contains("h265", ignoreCase = true) ||
+                    errorMsg.contains("HEVC", ignoreCase = true) || errorMsg.contains("h265", ignoreCase = true) ->
+                        "TV hardware lacks H.265/HEVC decoder. Set Dahua camera Stream 1 to H.264 in camera settings."
+                    
+                    error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                    error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+                    causeMsg.contains("timeout", ignoreCase = true) ->
+                        "Camera Connection Timed Out. Please check camera power and LAN network cable."
+                    
+                    error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+                    causeMsg.contains("404") || causeMsg.contains("403") ->
+                        "HTTP Server Error. Please check tablet local replay server connection."
+                    
+                    else -> "Unable to reach or decode stream URL. Check camera network and settings."
+                }
+
+                android.util.Log.e("VideoPlayerLayer", "Playback Error ($parsedDetail): ${error.message}", error)
+                errorDetailReason = parsedDetail
+
+                if (uiState.useMainStream && !isFallbackToSubStream && uiState.rtspSubUrl != "" && activeRtspUrl == uiState.rtspUrl) {
+                    android.util.Log.w("VideoPlayerLayer", "Main stream error on TV. Falling back to Sub Stream: ${uiState.rtspSubUrl}")
+                    playbackStatus = "Main Stream Error (Auto-switching to Sub-Stream...)"
+                    isFallbackToSubStream = true
+                } else {
+                    playbackStatus = "Source Error"
+                }
             }
         }
         exoPlayer.addListener(listener)
@@ -885,14 +927,7 @@ fun VideoPlayerLayer(uiState: TvUiState, viewModel: TvDashboardViewModel) {
         }
     }
 
-    // 1. Calculate the active URL based on stream preference and priority
-    val activeRtspUrl = if (uiState.useMainStream) {
-        if (uiState.rtspUrl != "") uiState.rtspUrl else uiState.rtspSubUrl
-    } else {
-        if (uiState.rtspSubUrl != "") uiState.rtspSubUrl else uiState.rtspUrl
-    }
-
-    val activeUrl = remember(uiState.status, uiState.rtspUrl, uiState.rtspSubUrl, uiState.lastRecordingUrl, uiState.localReplayUrl, uiState.isAutoReplayActive, uiState.isTabletOnline, uiState.useMainStream) {
+    val activeUrl = remember(uiState.status, uiState.rtspUrl, uiState.rtspSubUrl, uiState.lastRecordingUrl, uiState.localReplayUrl, uiState.isAutoReplayActive, uiState.isTabletOnline, uiState.useMainStream, isFallbackToSubStream) {
         val rawUrl = if (!uiState.isTabletOnline && !uiState.isAutoReplayActive) ""
         else if (uiState.status == "RECORDING" || uiState.status == "PAUSED") {
             activeRtspUrl
@@ -980,8 +1015,22 @@ fun VideoPlayerLayer(uiState: TvUiState, viewModel: TvDashboardViewModel) {
             modifier = Modifier.fillMaxSize()
         )
 
-        // Subtle Connection Status Overlay
-        if (playbackStatus != "Playing" && playbackStatus != "Finished" && playbackStatus != "Stopped" && !uiState.isReplayLoading) {
+        // High-Visibility Error & Failover Diagnostic Banner
+        if ((playbackStatus == "Source Error" || isFallbackToSubStream) && !uiState.isReplayLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(bottom = 120.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                StreamErrorBanner(
+                    title = if (isFallbackToSubStream) "AUTOMATIC STREAM FAILOVER" else "STREAM PLAYBACK ERROR",
+                    message = if (isFallbackToSubStream) 
+                        "Main Stream failed ($errorDetailReason). Switched to Sub-Stream." 
+                    else 
+                        errorDetailReason,
+                    isWarning = isFallbackToSubStream
+                )
+            }
+        } else if (playbackStatus != "Playing" && playbackStatus != "Finished" && playbackStatus != "Stopped" && !uiState.isReplayLoading) {
             Box(
                 modifier = Modifier.fillMaxSize().padding(bottom = 120.dp),
                 contentAlignment = Alignment.Center
@@ -1004,13 +1053,62 @@ fun VideoPlayerLayer(uiState: TvUiState, viewModel: TvDashboardViewModel) {
                         }
                         Text(
                             text = playbackStatus,
-                            color = if (playbackStatus == "Source Error (Check URL)") Color.Red else Color.White,
+                            color = Color.White,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun StreamErrorBanner(
+    title: String,
+    message: String,
+    isWarning: Boolean = true
+) {
+    Surface(
+        color = Color(0xFF1E1E1E).copy(alpha = 0.95f),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(2.dp, if (isWarning) Color(0xFFFFD700) else Color.Red),
+        modifier = Modifier
+            .width(580.dp)
+            .padding(16.dp)
+            .shadow(elevation = 16.dp, shape = RoundedCornerShape(16.dp))
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(if (isWarning) "⚡" else "⚠️", fontSize = 22.sp)
+                Text(
+                    title,
+                    color = if (isWarning) Color(0xFFFFD700) else Color.Red,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Black
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                message,
+                color = Color.White.copy(alpha = 0.9f),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                lineHeight = 20.sp
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                "Press SETTINGS gear on remote for technical diagnostics & camera config",
+                color = Color.White.copy(alpha = 0.5f),
+                fontSize = 12.sp
+            )
         }
     }
 }
