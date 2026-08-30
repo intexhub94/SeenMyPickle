@@ -14,5 +14,11 @@
 .cxx
 local.properties
 
+# Python runtime & config
+__pycache__/
+*.pyc
+config.json
+.idea/planningMode.xml
+
 # Project exclude paths
 /tv/build/

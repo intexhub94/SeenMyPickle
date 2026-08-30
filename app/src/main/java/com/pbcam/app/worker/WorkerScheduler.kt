@@ -56,6 +56,20 @@ object WorkerScheduler {
                 ExistingWorkPolicy.REPLACE,
                 uploadRequest
             )
+
+        val serverUploadRequest = OneTimeWorkRequestBuilder<ServerUploadWorker>()
+            .addTag(PC_UPLOAD_TAG)
+            .setInputData(workDataOf(ServerUploadWorker.KEY_SESSION_ID to sessionId))
+            .setConstraints(constraints)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
+            .build()
+
+        WorkManager.getInstance(context)
+            .enqueueUniqueWork(
+                "pc_upload_session_$sessionId",
+                ExistingWorkPolicy.REPLACE,
+                serverUploadRequest
+            )
     }
 
     fun enqueueResend(context: Context, sessionId: Long) {
@@ -73,6 +87,7 @@ object WorkerScheduler {
 
     const val CONVERT_TAG = "convert_task"
     const val UPLOAD_TAG = "upload_task"
+    const val PC_UPLOAD_TAG = "pc_upload_task"
 
     fun scheduleMaintenance(context: Context) {
         val request = PeriodicWorkRequestBuilder<MaintenanceWorker>(1, TimeUnit.DAYS)

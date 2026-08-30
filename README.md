@@ -2,86 +2,118 @@
 
 ![SeenMyPickle Logo](app/src/main/res/raw/app_logo_email.png)
 
-SeenMyPickle is a professional-grade Android application designed for high-fidelity pickleball court monitoring. It features a robust multi-source recording engine, a secure hardware-locked licensing system, and a fully automated background processing pipeline. It is optimized for mid-range tablets and mobile devices, providing court owners with an "industrial-strength" solution for video capture and delivery.
+**SeenMyPickle** is an industrial-strength, professional Android & Desktop software suite engineered for high-fidelity pickleball court monitoring, automated video recording, local network storage offloading, and public TV streaming.
+
+It features a multi-source video capture engine (RTSP/Internal/USB), a hardware-accelerated watermarking pipeline, a secure hardware-locked licensing framework, a standalone **Windows Desktop Storage Vault Server**, and a dedicated **PickleView TV App** for 24/7 public court displays and instant replays.
 
 ---
 
-## 🌟 Key Features
+## 🌟 Key System Modules & Features
 
-### 📹 Professional Recording Engine
-- **Multi-Source Support**: High-fidelity capture from RTSP (CCTV), Internal, and USB cameras.
-- **Resilient Capture**: Hardened FFmpeg capture with 50MB jitter buffers and packet reordering to absorb Wi-Fi fluctuations.
-- **Jitter-Proof Video**: Mandatory `fps=30` and `setpts` normalization during post-processing for buttery-smooth motion.
-- **Dual-Stream Strategy**: Utilizes high-res Main Streams for recording and low-latency Sub-Streams for dashboard monitoring.
+### 📹 1. Professional Tablet Recording Engine (`:app`)
+- **Multi-Source Support**: High-fidelity video capture from RTSP (CCTV/IP cameras), Internal tablet cameras (via CameraX), and external USB cameras.
+- **Dual-Stream Strategy**: High-resolution Main Stream for recording and low-latency Sub-Stream for live dashboard monitoring.
+- **Resilient FFmpeg Capture**: 50MB jitter buffers, packet reordering, and TCP transport (`-rtsp_flags prefer_tcp`) to handle wireless camera fluctuations.
+- **Micro-Segmenting**: Automatically rotates long matches into 10-minute segments to prevent data loss.
+- **Jitter-Proof Processing**: Mandatory `fps=30` motion smoothing and `setpts` timestamp normalization during hardware-accelerated MediaCodec conversion.
 
-### 🚀 Automated Pipeline
-- **Hardware Acceleration**: Full hardware transcoding (MediaCodec) for watermarking and compression.
-- **Automated Delivery**: Zero-friction upload to Google Drive and branded notifications via Gmail API.
-- **Multi-Player Support**: Supports up to 5 player emails per session with smart chip-based UI.
-- **Privacy First**: Automated email wiping and log sanitization after every match.
+### 🖥️ 2. Windows Desktop Media Server & Storage Vault (`seenmypickle_server.py`)
+- **Desktop Graphical Interface (Tkinter)**: Native GUI allows court owners to pick any local drive or external hard folder (`D:\SeenMyPickle_Vault`) with a single click.
+- **Fail-Safe Tablet Storage Offload**: Tablet uploads converted `.mp4` recordings over LAN to the Windows PC server (`ServerUploadWorker`) and purges tablet flash memory **ONLY AFTER receiving confirmed HTTP 200 OK receipt**.
+- **Byte-Range HTTP Media Server**: Serves fast `HTTP 206 Partial Content` video streams over local Wi-Fi for ExoPlayer seeking on TV devices.
+- **Storage & Server Dashboard**: Displays local PC IP address, active port (`5000`), free disk space, and real-time upload/streaming activity logs.
 
-### 📺 PickleView TV (Supplementary App)
-- **Public Display**: A dedicated TV module for 24/7 continuous court monitoring.
-- **Tablet Presence**: 10-second active heartbeat detection with automated "Tablet Offline" alerts.
-- **Instant Replay**: Automated handover from live feed to instant replay upon match completion via a local HTTP server.
+### 🚀 3. Automated Cloud & Email Pipeline
+- **Google Drive Integration**: Resumable cloud uploads with configurable rolling retention policies (1 to 30 days auto-purge).
+- **Branded Email Alerts**: Sends match download links to up to 5 player emails per match via Gmail API.
+- **Privacy Enforcement**: Automated clearing of player email chips and sensitive fields post-match.
 
-### 🛡️ Secure Administration
-- **Hardware Licensing**: Secure, hardware-locked product activation with real-time remote revocation (Firebase).
-- **Admin Panel**: Sectioned technical settings for camera config, watermark customization, and storage maintenance.
-- **Deep Diagnostics**: Comprehensive FFmpeg log capture and exit code transparency for rapid troubleshooting.
+### 📺 4. PickleView TV App (`:tv`)
+- **24/7 Public Display**: Dedicated Android TV module for court displays.
+- **Hybrid Sync Engine**: Sub-10ms Local LAN HTTP status probing combined with Firebase Realtime Database cloud fallback.
+- **Tablet Presence Watchdog**: 10-second active heartbeat monitoring with automatic "Tablet Offline" status popups and visible pairing IDs (`PB-XXXX-XXXX`).
+- **Instant Replays**: Direct video playback from the Windows PC Desktop Vault or Cloud.
+
+### 🛡️ 5. Security & Administration
+- **Hardware-Locked Licensing**: Unique device fingerprints (`ANDROID_ID`) mapped to `PB-XXXX-XXXX` license keys with real-time remote revocation.
+- **Admin Security**: On-screen custom numeric keypad for PIN entry (side-by-side landscape layout) and emergency master recovery PIN (**2026**).
+- **3-Strike Lockout**: Mandatory 60-second persistent lockout after 3 invalid PIN attempts.
 
 ---
 
 ## 🏗️ System Architecture
 
-SeenMyPickle follows **MVVM (Model-View-ViewModel)** with Clean Architecture principles:
-
-- **UI Layer**: 100% Jetpack Compose with a custom branding-aligned design system ("Branding Bubbles").
-- **State Management**: Reactive streams using Kotlin Coroutines and Flows.
-- **Persistence**: Room Database for session tracking and WorkManager for offline-capable background processing.
-- **Networking**: Resumable Google Drive uploads and low-latency Firebase Realtime Database status synchronization.
+```
++--------------------------+                         +-----------------------------------+
+|  Camera Feed             |                         |  Windows PC Storage Vault         |
+|  (RTSP / Internal / USB) |                         |  (seenmypickle_server.py)         |
++--------------------------+                         |  [Tkinter GUI + HTTP Media Server]|
+             |                                       +-----------------------------------+
+             v                                                         ^
++--------------------------+        1. Upload .mp4 over LAN            |
+|  SeenMyPickle Tablet     | ------------------------------------------+
+|  (:app)                  |        2. Delete local file on 200 OK
+|  - CameraX & FFmpeg      | 
+|  - MediaCodec Transcode  |                         +-----------------------------------+
+|  - WorkManager Pipeline  | ----------------------> | Google Drive & Gmail API (Backup) |
++--------------------------+                         +-----------------------------------+
+             |                                                         ^
+             | 3. Sub-10ms LAN Probe / Firebase RTDB                   | 4. HTTP Byte-Range Stream
+             v                                                         v
++----------------------------------------------------------------------------------------+
+|  PickleView TV App (:tv)                                                               |
+|  - 24/7 Court Monitoring & Instant Replay Player (ExoPlayer / Media3)                  |
++----------------------------------------------------------------------------------------+
+```
 
 ---
 
 ## 🛠️ Technology Stack
 
-| Category | Technology |
+| Component | Technology / Library |
 | :--- | :--- |
-| **Language** | Kotlin 1.9+ |
-| **UI Framework** | Jetpack Compose (Material 3) |
-| **Video Capture** | CameraX & FFmpeg (ffmpeg-kit) |
-| **Video Playback** | Media3 (ExoPlayer) |
-| **Background Tasks** | WorkManager |
-| **Database** | Room SQLite |
-| **Cloud / Sync** | Firebase RTDB & Google Drive API |
-| **Authentication** | Google Identity Services |
+| **Languages** | Kotlin 1.9+, Python 3 (Tkinter + HTTP Server) |
+| **Android UI** | Jetpack Compose (Material 3) |
+| **Video Engine** | CameraX, FFmpeg (`ffmpeg-kit`), Media3 (ExoPlayer) |
+| **Background Processing**| WorkManager (CoroutineWorkers) |
+| **Database & Storage** | Room SQLite, SharedPreferences (`SettingsStore`) |
+| **Desktop Server** | Python 3, `tkinter`, `http.server`, `threading`, `json` |
+| **Cloud Services** | Firebase Realtime Database, Google Drive API, Gmail API |
 
 ---
 
 ## 🚦 Getting Started
 
-### Prerequisites
-1.  **Android Device**: Tablet or Mobile (Android 9.0+ recommended).
-2.  **Internet**: Required for licensing and cloud delivery.
-3.  **Google Account**: Required for footage storage and email alerts.
+### 1. Tablet Setup (`:app`)
+1. Launch the app on your Android tablet or phone (Android 9.0+).
+2. Enter your 16-character SeenMyPickle license key (`PB-XXXX-XXXX`).
+3. Use the Setup Wizard to configure your camera source (Auto-Detect available for RTSP IP cameras).
 
-### Installation
-1.  **Product Activation**: Upon cold launch, agree to the Setup Disclaimer and enter your 16-character SeenMyPickle license key.
-2.  **Configuration**: Use the Setup Wizard to configure your camera (Auto-Scan for RTSP cameras is supported).
-3.  **Authentication**: Connect your Google Account in the Admin Panel to enable footage delivery.
+### 2. Running the Windows/Linux PC Media Server
+1. Ensure Python 3 is installed on your desktop PC.
+2. Launch the server script:
+   * **Windows**:
+     ```cmd
+     python seenmypickle_server.py
+     ```
+   * **Linux**:
+     ```bash
+     sudo apt install python3-tk -y
+     python3 seenmypickle_server.py
+     ```
+3. In the GUI, click **Browse...** to pick your storage folder (e.g., `D:\SeenMyPickle_Storage`).
+4. Click **▶ Start Server** and note the local IP address (e.g. `192.168.1.105`).
+5. Open the **Tablet Admin Panel** -> **Cloud & Storage** -> enable **Offload Footage to Windows PC**, enter the PC IP, tap **Test PC Server Connection**, and save changes.
+
+### 3. PickleView TV Setup (`:tv`)
+1. Deploy `:tv` module to your Android TV or Fire TV stick.
+2. Enter the **Pairing ID** displayed on the tablet's header (`PB-XXXX-XXXX`).
+3. The TV app will automatically detect live match status and stream instant replays directly from the local Windows PC Desktop Vault!
 
 ---
 
-## 📝 Maintenance & Support
+## ⚖️ License & Support
 
-- **Storage**: Automatically purges local and cloud data based on a rolling retention policy (Default: 5 days).
-- **Updates**: Silently checks for new versions on every cold launch.
-- **Recovery**: Use the master override code **2026** for emergency administrative access.
-
----
-
-## ⚖️ Disclaimer
-
-*Footage is stored for a limited time based on your retention policy and is permanently deleted thereafter. Ensure players are aware that play is being recorded for monitoring purposes.*
+*Footage is stored and auto-purged based on your configured retention policies. Ensure court players are informed that matches are recorded for monitoring and replay purposes.*
 
 **Developed by SeenMyPickle Smart Court Systems &copy; 2026. All rights reserved.**

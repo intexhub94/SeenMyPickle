@@ -65,7 +65,8 @@ data class TvUiState(
     val activeReplaySession: TvReplaySession? = null,
     val useMainStream: Boolean = false,
     val useHdrMode: Boolean = false,
-    val isHdrSupported: Boolean = false
+    val isHdrSupported: Boolean = false,
+    val pcServerIp: String = ""
 )
 
 class TvDashboardViewModel(application: Application) : AndroidViewModel(application) {
@@ -98,7 +99,8 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
         // --- PAIRING PERSISTENCE & STREAM PREFERENCE ---
         val savedId = prefs.getString("paired_device_id", "") ?: ""
         val savedUseMainStream = prefs.getBoolean("use_main_stream", false)
-        _uiState.update { it.copy(useMainStream = savedUseMainStream) }
+        val savedPcIp = prefs.getString("pc_server_ip", "") ?: ""
+        _uiState.update { it.copy(useMainStream = savedUseMainStream, pcServerIp = savedPcIp) }
 
         if (savedId != "") {
             pairDevice(savedId)
@@ -163,6 +165,7 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
         startObservingStatus(formattedId)
         startWatchdog()
         startLocalLanProber()
+        startPcServerProber()
     }
 
     fun unpairDevice() {
@@ -172,7 +175,15 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
         }
         watchdogJob?.cancel()
         lanProbeJob?.cancel()
+        pcServerProbeJob?.cancel()
         _uiState.update { TvUiState(isSplashScreenActive = false) }
+    }
+
+    fun updatePcServerIp(ip: String) {
+        val clean = ip.trim()
+        prefs.edit().putString("pc_server_ip", clean).apply()
+        _uiState.update { it.copy(pcServerIp = clean) }
+        startPcServerProber()
     }
 
     fun toggleSettings(open: Boolean) {
@@ -440,6 +451,41 @@ class TvDashboardViewModel(application: Application) : AndroidViewModel(applicat
                         }
                     }
                 }
+            }
+        }
+    }
+
+    private var pcServerProbeJob: Job? = null
+
+    private fun startPcServerProber() {
+        pcServerProbeJob?.cancel()
+        pcServerProbeJob = viewModelScope.launch {
+            while (true) {
+                val targetIp = _uiState.value.pcServerIp
+                if (targetIp.isNotBlank()) {
+                    val pcStatus = com.pbcam.tv.network.TvNetworkManager.probePcServer(targetIp)
+                    if (pcStatus != null && pcStatus.isOnline) {
+                        val pcSessions = pcStatus.recordings.mapIndexed { idx, rec ->
+                            TvReplaySession(
+                                id = (System.currentTimeMillis() - idx * 1000),
+                                email = rec.filename,
+                                startTime = System.currentTimeMillis(),
+                                duration = 0L,
+                                localUrl = rec.streamUrl,
+                                gDriveUrl = "",
+                                status = "PC_STORAGE"
+                            )
+                        }
+                        _uiState.update { state ->
+                            val combined = (pcSessions + state.recentSessions).distinctBy { it.localUrl }
+                            state.copy(
+                                recentSessions = if (combined.isNotEmpty()) combined else state.recentSessions,
+                                debugInfo = "PC Server Online: ${pcStatus.recordings.size} files"
+                            )
+                        }
+                    }
+                }
+                delay(5000)
             }
         }
     }

@@ -76,6 +76,9 @@ fun AdminPanel(
     var localRecTimeout by remember(uiState.previewTimeoutRecMins) { mutableIntStateOf(uiState.previewTimeoutRecMins) }
     var localIdleTimeout by remember(uiState.previewTimeoutIdleMins) { mutableIntStateOf(uiState.previewTimeoutIdleMins) }
     var localRetention by remember(uiState.retentionDays) { mutableIntStateOf(uiState.retentionDays) }
+    var localPcIp by remember(uiState.pcServerIp) { mutableStateOf(uiState.pcServerIp) }
+    var localPcPortText by remember(uiState.pcServerPort) { mutableStateOf(uiState.pcServerPort.toString()) }
+    var localEnableOffload by remember(uiState.enablePcOffload) { mutableStateOf(uiState.enablePcOffload) }
     
     val hasChanges = localRtsp != rtspUrl || 
                     localRtspSub != rtspSubUrl ||
@@ -84,7 +87,10 @@ fun AdminPanel(
                     localMinutes != uiState.maxRecordingMinutes ||
                     localRecTimeout != uiState.previewTimeoutRecMins ||
                     localIdleTimeout != uiState.previewTimeoutIdleMins ||
-                    localRetention != uiState.retentionDays
+                    localRetention != uiState.retentionDays ||
+                    localPcIp != uiState.pcServerIp ||
+                    localPcPortText != uiState.pcServerPort.toString() ||
+                    localEnableOffload != uiState.enablePcOffload
     
     var newPasscode by remember { mutableStateOf("") }
     var selectedCameraIp by remember { mutableStateOf<String?>(null) }
@@ -220,6 +226,7 @@ fun AdminPanel(
                                 viewModel.updateMaxRecordingMinutes(localMinutes)
                                 viewModel.updatePreviewTimeouts(localRecTimeout, localIdleTimeout)
                                 viewModel.updateRetentionDays(localRetention)
+                                viewModel.updatePcServerSettings(localPcIp, localPcPortText.toIntOrNull() ?: 5000, localEnableOffload)
                                 viewModel.saveAdminSettings(newPasscode, localRtsp, localRtspSub, localCourt, localSource)
                                 showSavedDialog = true
                             },
@@ -287,7 +294,13 @@ fun AdminPanel(
                         onLicenseRenewal = { renewalKey = ""; showLicenseRenewalDialog = true },
                         onWatermarkPositionChange = viewModel::updateWatermarkPosition,
                         onWatermarkUpload = viewModel::saveCustomWatermark,
-                        onWatermarkClear = viewModel::clearCustomWatermark
+                        onWatermarkClear = viewModel::clearCustomWatermark,
+                        localPcIp = localPcIp,
+                        onPcIpChange = { localPcIp = it },
+                        localPcPortText = localPcPortText,
+                        onPcPortTextChange = { localPcPortText = it },
+                        localEnableOffload = localEnableOffload,
+                        onEnableOffloadChange = { localEnableOffload = it }
                     )
                 }
 
@@ -349,7 +362,13 @@ fun AdminPanel(
                     onLicenseRenewal = { renewalKey = ""; showLicenseRenewalDialog = true },
                     onWatermarkPositionChange = viewModel::updateWatermarkPosition,
                     onWatermarkUpload = viewModel::saveCustomWatermark,
-                    onWatermarkClear = viewModel::clearCustomWatermark
+                    onWatermarkClear = viewModel::clearCustomWatermark,
+                    localPcIp = localPcIp,
+                    onPcIpChange = { localPcIp = it },
+                    localPcPortText = localPcPortText,
+                    onPcPortTextChange = { localPcPortText = it },
+                    localEnableOffload = localEnableOffload,
+                    onEnableOffloadChange = { localEnableOffload = it }
                 )
 
                 Button(
@@ -357,6 +376,7 @@ fun AdminPanel(
                         viewModel.updateMaxRecordingMinutes(localMinutes)
                         viewModel.updatePreviewTimeouts(localRecTimeout, localIdleTimeout)
                         viewModel.updateRetentionDays(localRetention)
+                        viewModel.updatePcServerSettings(localPcIp, localPcPortText.toIntOrNull() ?: 5000, localEnableOffload)
                         viewModel.saveAdminSettings(newPasscode, localRtsp, localRtspSub, localCourt, localSource)
                         showSavedDialog = true
                     }, 
@@ -496,10 +516,20 @@ private fun SettingsSection(
     onLicenseRenewal: () -> Unit,
     onWatermarkPositionChange: (WatermarkPosition) -> Unit,
     onWatermarkUpload: (android.net.Uri) -> Unit,
-    onWatermarkClear: () -> Unit
+    onWatermarkClear: () -> Unit,
+    localPcIp: String,
+    onPcIpChange: (String) -> Unit,
+    localPcPortText: String,
+    onPcPortTextChange: (String) -> Unit,
+    localEnableOffload: Boolean,
+    onEnableOffloadChange: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
+
+    var testResultMsg by remember { mutableStateOf<String?>(null) }
+    var testSuccess by remember { mutableStateOf<Boolean?>(null) }
+    var isTestingPc by remember { mutableStateOf(false) }
 
     val logoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -978,6 +1008,97 @@ private fun SettingsSection(
                     color = MaterialTheme.colorScheme.secondary,
                     fontWeight = FontWeight.Medium
                 )
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            // --- WINDOWS PC MEDIA SERVER OFFLOAD ---
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Offload Footage to Windows PC", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                        Text("Send recordings to local PC server and purge tablet storage post-upload", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(
+                        checked = localEnableOffload,
+                        onCheckedChange = { onEnableOffloadChange(it) }
+                    )
+                }
+
+                if (localEnableOffload) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = localPcIp,
+                            onValueChange = { onPcIpChange(it.trim()) },
+                            label = { Text("Windows PC IP Address") },
+                            modifier = Modifier.weight(2f),
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = localPcPortText,
+                            onValueChange = { onPcPortTextChange(it.filter { char -> char.isDigit() }.take(5)) },
+                            label = { Text("Port") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            isTestingPc = true
+                            testResultMsg = null
+                            testSuccess = null
+                            val port = localPcPortText.toIntOrNull() ?: 5000
+                            viewModel.testPcServerConnection(localPcIp, port) { success, msg ->
+                                isTestingPc = false
+                                testSuccess = success
+                                testResultMsg = msg
+                            }
+                        },
+                        enabled = !isTestingPc && localPcIp.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Icon(if (isTestingPc) Icons.Default.Sync else Icons.Default.NetworkCheck, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (isTestingPc) "Testing Connection..." else "Test PC Server Connection")
+                    }
+
+                    testResultMsg?.let { msg ->
+                        val isSuccess = testSuccess == true
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSuccess) Color(0xFF1B5E20).copy(alpha = 0.2f) else Color(0xFFB71C1C).copy(alpha = 0.2f)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Error,
+                                    null,
+                                    tint = if (isSuccess) Color(0xFF4CAF50) else Color(0xFFEF5350)
+                                )
+                                Text(
+                                    msg,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSuccess) Color(0xFF81C784) else Color(0xFFE57373)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }

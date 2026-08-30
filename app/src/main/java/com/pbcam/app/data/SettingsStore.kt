@@ -113,6 +113,18 @@ class SettingsStore(context: Context) {
         get() = prefs.getString(KEY_CUSTOM_WATERMARK_PATH, null)
         set(value) = prefs.edit().putString(KEY_CUSTOM_WATERMARK_PATH, value).apply()
 
+    var pcServerIp: String
+        get() = prefs.getString(KEY_PC_SERVER_IP, "192.168.1.100").orEmpty()
+        set(value) = prefs.edit().putString(KEY_PC_SERVER_IP, value).apply()
+
+    var pcServerPort: Int
+        get() = prefs.getInt(KEY_PC_SERVER_PORT, 5000)
+        set(value) = prefs.edit().putInt(KEY_PC_SERVER_PORT, value).apply()
+
+    var enablePcOffload: Boolean
+        get() = prefs.getBoolean(KEY_ENABLE_PC_OFFLOAD, false)
+        set(value) = prefs.edit().putBoolean(KEY_ENABLE_PC_OFFLOAD, value).apply()
+
     fun isLicensed(context: Context): Boolean {
         return SecurityUtils.verifyLicense(context, licenseKey)
     }
@@ -139,6 +151,9 @@ class SettingsStore(context: Context) {
         private const val KEY_RETENTION_DAYS = "retention_days"
         private const val KEY_LOCAL_STORAGE_RETENTION_HOURS = "local_storage_retention_hours"
         private const val KEY_CUSTOM_WATERMARK_PATH = "custom_watermark_path"
+        private const val KEY_PC_SERVER_IP = "pc_server_ip"
+        private const val KEY_PC_SERVER_PORT = "pc_server_port"
+        private const val KEY_ENABLE_PC_OFFLOAD = "enable_pc_offload"
         private const val DEFAULT_RTSP_URL = "rtsp://192.168.1.100:554/stream"
     }
 }

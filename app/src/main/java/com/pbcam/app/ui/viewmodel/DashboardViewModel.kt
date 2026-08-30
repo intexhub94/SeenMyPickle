@@ -32,6 +32,8 @@ import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.HashMap
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
@@ -106,7 +108,10 @@ data class DashboardUiState(
     val cloudSyncStatus: String = "IDLE",
     val cloudSyncError: String = "",
     val lastReplaySessionId: Long = -1,
-    val failedPipelineSessionId: Long? = null
+    val failedPipelineSessionId: Long? = null,
+    val pcServerIp: String = "192.168.1.100",
+    val pcServerPort: Int = 5000,
+    val enablePcOffload: Boolean = false
 )
 
 class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
@@ -605,14 +610,16 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val convertFlow = workManager.getWorkInfosByTagFlow(WorkerScheduler.CONVERT_TAG)
             val uploadFlow = workManager.getWorkInfosByTagFlow(WorkerScheduler.UPLOAD_TAG)
+            val pcUploadFlow = workManager.getWorkInfosByTagFlow(WorkerScheduler.PC_UPLOAD_TAG)
 
-            combine(convertFlow, uploadFlow) { convertInfos, uploadInfos ->
-                convertInfos + uploadInfos
+            combine(convertFlow, uploadFlow, pcUploadFlow) { convertInfos, uploadInfos, pcUploadInfos ->
+                convertInfos + uploadInfos + pcUploadInfos
             }.collect { infos ->
                 val active = infos.find { !it.state.isFinished }
                 if (active != null) {
                     val sessionId = active.progress.getLong(ConvertWorker.KEY_SESSION_ID, -1L)
                         .let { if (it == -1L) active.progress.getLong(UploadWorker.KEY_SESSION_ID, -1L) else it }
+                        .let { if (it == -1L) active.progress.getLong(com.pbcam.app.worker.ServerUploadWorker.KEY_SESSION_ID, -1L) else it }
                     
                     val progress = active.progress.getFloat("progress_val", 0f)
                     val progressMsg = active.progress.getString("progress_msg")
@@ -838,6 +845,39 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
         settings.cameraSource = source
         refreshSettings()
         syncLiveStatusToCloud()
+    }
+
+    fun updatePcServerSettings(ip: String, port: Int, enableOffload: Boolean) {
+        settings.pcServerIp = ip
+        settings.pcServerPort = port
+        settings.enablePcOffload = enableOffload
+        refreshSettings()
+    }
+
+    fun testPcServerConnection(ip: String, port: Int, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val url = URL("http://$ip:$port/api/status")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.connectTimeout = 3000
+                connection.readTimeout = 3000
+                connection.requestMethod = "GET"
+                val responseCode = connection.responseCode
+                if (responseCode == 200) {
+                    withContext(Dispatchers.Main) {
+                        onResult(true, "Connected to Windows PC Server at $ip:$port")
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        onResult(false, "Server returned HTTP $responseCode")
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    onResult(false, "Connection failed: ${e.localizedMessage ?: "Timeout"}")
+                }
+            }
+        }
     }
 
     fun updateCourtTag(name: String) {
@@ -1163,7 +1203,10 @@ class DashboardViewModel(private val app: Application) : AndroidViewModel(app) {
                 retentionDays = settings.retentionDays,
                 customWatermarkPath = settings.customWatermarkPath,
                 isAuthenticated = isAuth,
-                authenticatedEmail = authEmail
+                authenticatedEmail = authEmail,
+                pcServerIp = settings.pcServerIp,
+                pcServerPort = settings.pcServerPort,
+                enablePcOffload = settings.enablePcOffload
             )
         }
         
