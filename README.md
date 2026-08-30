@@ -143,20 +143,6 @@ All third-party libraries and frameworks used in this project are 100% open-sour
 
 ---
 
-## 🛠️ Building & Pushing Updates
-
-### Build Verification Commands
-```bash
-./gradlew app:assembleDebug
-./gradlew tv:assembleDebug
-```
-
-### Pushing Commits via Android Studio
-1. In Android Studio's top menu bar, click **Git** -> **Push...** (or press `Ctrl + Shift + K`).
-2. Select your commits and click **Push**.
-
----
-
 ## ⚖️ License & Support
 
 *Footage is stored and auto-purged based on your configured retention policies. Ensure court players are informed that matches are recorded for monitoring and replay purposes.*
