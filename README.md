@@ -38,7 +38,7 @@ It features a multi-source video capture engine (RTSP/Internal/USB), a hardware-
 
 ### 🛡️ 5. Security & Administration
 - **Hardware-Locked Licensing**: Unique device fingerprints (`ANDROID_ID`) mapped to `PB-XXXX-XXXX` license keys with real-time remote revocation.
-- **Admin Security**: On-screen custom numeric keypad for PIN entry (side-by-side landscape layout) and emergency master recovery PIN (**2026**).
+- **Admin Security**: On-screen custom numeric keypad for PIN entry (side-by-side landscape layout)
 - **3-Strike Lockout**: Mandatory 60-second persistent lockout after 3 invalid PIN attempts.
 
 ---
@@ -122,11 +122,7 @@ All third-party libraries and frameworks used in this project are 100% open-sour
 
 ### 2. Running the Windows/Linux PC Media Server
 1. Ensure Python 3 is installed on your desktop PC.
-2. Launch the server script:
-   * **Windows**:
-     ```cmd
-     python seenmypickle_server.py
-     ```
+2. Launch the server script or the exe
    * **Linux**:
      ```bash
      sudo apt install python3-tk -y
